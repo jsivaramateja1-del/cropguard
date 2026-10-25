@@ -590,3 +590,25 @@ def test_reports_pagination(client, leaf_jpeg):
     assert len(page["items"]) == 2
     page2 = client.get("/api/reports", params={"limit": 2, "offset": 2}).json()
     assert len(page2["items"]) == 1
+
+
+def test_model_path_pointing_at_onnx_is_honoured(tmp_path):
+    """A deployment may set MODEL_PATH to the .onnx; that must not confuse the message."""
+    service = ModelService(
+        torch_path=tmp_path / "cropguard_mobilenetv3.onnx",
+        onnx_path=tmp_path / "cropguard_mobilenetv3.onnx",
+        class_names_path=tmp_path / "class_names.json",
+    )
+    assert service.onnx_path.suffix == ".onnx"
+    assert service.torch_path.suffix == ".pth"
+
+    with pytest.raises(ModelUnavailable) as error:
+        service.load()
+    message = str(error.value)
+    assert "cropguard_mobilenetv3.onnx" in message
+    assert "cropguard_mobilenetv3.pth" in message
+    assert message.count("(ONNX) or") == 0  # the old, confusing wording is gone
+
+
+def test_head_root_answers(client):
+    assert client.head("/").status_code == 200

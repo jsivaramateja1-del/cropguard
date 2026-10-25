@@ -244,6 +244,12 @@ def root() -> dict:
     }
 
 
+@app.head("/", include_in_schema=False)
+def root_head() -> None:
+    """Platform health probes sometimes send HEAD /; answer instead of 405."""
+    return None
+
+
 @app.get("/health", summary="Health and readiness")
 def health() -> dict:
     service = get_model_service()

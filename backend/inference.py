@@ -211,8 +211,18 @@ class ModelService:
         class_names_path: Optional[Path] = None,
         backend_preference: str = "auto",
     ) -> None:
-        self.onnx_path = Path(onnx_path or settings.onnx_path_resolved)
-        self.torch_path = Path(torch_path or settings.model_path_resolved)
+        resolved_model = Path(torch_path or settings.model_path_resolved)
+        resolved_onnx = Path(onnx_path or settings.onnx_path_resolved)
+
+        # MODEL_PATH is documented as the PyTorch checkpoint, but a deployment may
+        # reasonably point it at the ONNX artifact instead. Honour that rather than
+        # reporting "expected ... .onnx (ONNX) or ... .onnx (PyTorch)".
+        if resolved_model.suffix.lower() == ".onnx":
+            resolved_onnx = resolved_model
+            resolved_model = resolved_model.with_suffix(".pth")
+
+        self.onnx_path = resolved_onnx
+        self.torch_path = resolved_model
         self.class_names_path = Path(class_names_path or settings.class_names_path_resolved)
         self.backend_preference = (backend_preference or "auto").lower()
 
@@ -277,11 +287,13 @@ class ModelService:
             torch_backend()
             return "torch"
 
+
         raise ModelUnavailable(
-            "No model artifact found. Expected either "
-            f"{self.onnx_path.name} (ONNX) or {self.torch_path.name} (PyTorch) in "
-            f"{self.onnx_path.parent}. Train one with ml_training/train_kaggle.py, "
-            "then copy the artifacts into backend/model/."
+            "No model artifact found in "
+            f"{self.onnx_path.parent}. Expected either the ONNX export "
+            f"'{self.onnx_path.name}' or the PyTorch checkpoint "
+            f"'{self.torch_path.name}'. Train with ml_training/train_kaggle.py, export "
+            "with ml_training/export_onnx.py, then copy the artifacts into backend/model/."
         )
 
     def load(self) -> None:
