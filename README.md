@@ -172,6 +172,28 @@ The run exports `cropguard_mobilenetv3.pth`, `class_names.json`, `training_log.c
 
 ---
 
+## Data attribution
+
+Weather data comes from [Open-Meteo](https://open-meteo.com/) and, as a fallback,
+[MET Norway](https://api.met.no/). Open-Meteo's data is licensed under
+**CC BY 4.0**, which requires attribution wherever the data is displayed. The
+frontend must credit it — for example in the footer of every page:
+
+> Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)
+
+Notes on the free tier, because they shape the deployment:
+
+* No API key is required, and no free key exists. Limits are 10,000 calls/day,
+  5,000/hour and 600/minute, applied **per IP**.
+* Open-Meteo's terms name cloud hosts — Render, Vercel, Netlify — as likely to be
+  limited earlier than expected, so a deployment can receive HTTP 429 without
+  misusing anything. That is why the backend caches per ~1 km square for 10 minutes
+  and falls back to MET Norway, which is keyless and has separate limits.
+* `OPEN_METEO_API_KEY` exists only on a paid plan (customer-api.open-meteo.com).
+  Without it, the cache plus the MET Norway fallback are the free mitigations.
+* MET Norway requires an identifying `User-Agent` with real contact details; set
+  `WEATHER_CONTACT` to your email.
+
 ## Environment variables
 
 Introduced in Phase 2, documented in `backend/.env.example`. Planned keys:

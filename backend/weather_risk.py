@@ -316,9 +316,10 @@ def fetch_weather(
 
     Providers, in order:
 
-    1. **Open-Meteo** — keyless, or the customer endpoint when ``OPEN_METEO_API_KEY``
-       is set. The free endpoint rate-limits by IP, and cloud hosts share egress IPs,
-       which is what produces HTTP 429 on a deployment.
+    1. **Open-Meteo** — keyless. Its free tier has no API key option and applies limits
+       per IP; Open-Meteo's own terms name Render among hosts likely to be limited
+       early, which is what produces HTTP 429 on this deployment. ``OPEN_METEO_API_KEY``
+       is supported for a paid plan only.
     2. **MET Norway** — keyless and free, but requires an identifying User-Agent
        (``WEATHER_CONTACT``). Different rate limits, so it usually works when the
        first does not.
@@ -385,8 +386,10 @@ def fetch_weather(
 
     raise WeatherError(
         "all weather providers failed -> " + "; ".join(failures)
-        + ". Set OPEN_METEO_API_KEY (free, non-commercial) to use Open-Meteo's customer "
-        "endpoint, which is not subject to the shared-IP rate limit."
+        + ". Note: Open-Meteo's free tier has no API key and applies its limits per IP; "
+        "it names cloud hosts such as Render explicitly as likely to be limited early. "
+        "OPEN_METEO_API_KEY only exists on a paid plan. The keyless MET Norway fallback "
+        "and the response cache are the free mitigations already in use here."
     )
 
 
