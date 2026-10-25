@@ -1,10 +1,12 @@
 # CropGuard backend dependencies
 # Install with:  pip install -r requirements.txt
 #
-# NOTE ON TORCH: the default PyPI wheel for torch on Linux bundles CUDA and is
-# ~800 MB. A CPU-only deployment (Hugging Face free tier, Render free tier) should
-# install from the CPU index instead, which the Phase 7 Dockerfile does:
-#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+# The extra index below makes pip resolve torch to the CPU build (torch 2.5.1+cpu,
+# 174 MB) instead of the default PyPI linux wheel, which bundles CUDA and is ~2.5 GB.
+# On a small instance — Render's 512 MB tier, Hugging Face's free CPU tier — the CUDA
+# wheel either fails the build or exhausts the disk, and none of that GPU code is
+# usable anyway. Verified: pip resolves torch-2.5.1+cpu and torchvision-0.20.1+cpu.
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 # --- web framework -----------------------------------------------------------
 fastapi==0.115.6
