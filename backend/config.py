@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     open_meteo_api_key: str = ""
     weather_cache_ttl: int = 600
     weather_timeout: float = 8.0
+    # auto = try Open-Meteo then MET Norway; or pin one provider.
+    weather_provider: str = "auto"  # auto | open-meteo | met-no
+    # MET Norway requires an identifying User-Agent with real contact details.
+    weather_contact: str = "cropguard-demo"
 
     # Decision thresholds (see docs/calibration.md before changing)
     confidence_threshold: float = 0.75
@@ -90,6 +94,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def weather_user_agent(self) -> str:
+        return f"CropGuard/{0.3} (agricultural decision support; {self.weather_contact})"
 
     @property
     def cloudinary_enabled(self) -> bool:

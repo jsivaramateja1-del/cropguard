@@ -788,17 +788,20 @@ def test_persistent_rate_limit_gives_actionable_advice():
 
 
 def test_client_error_is_not_retried():
-    attempts = []
+    """A 400 will not improve by asking again — but the other provider is still tried."""
+    hosts = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        attempts.append(1)
+        hosts.append(request.url.host)
         return httpx.Response(400)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         with pytest.raises(weather_risk.WeatherError):
             weather_risk.fetch_weather(16.5, 80.6, client=http, retries=3)
 
-    assert len(attempts) == 1, "a 400 will not improve by asking again"
+    assert len(hosts) == 2, f"expected one attempt per provider, got {hosts}"
+    for host in set(hosts):
+        assert hosts.count(host) == 1, f"{host} was retried on a 4xx"
 
 
 def test_api_key_switches_to_the_customer_endpoint(monkeypatch):
@@ -821,3 +824,122 @@ def test_health_reports_weather_configuration(client):
     assert "weather" in payload
     assert payload["weather"]["endpoint"] in {"public", "customer"}
     assert isinstance(payload["weather"]["cache_entries"], int)
+
+
+# ---------------------------------------------------------------------------
+# MET Norway fallback (free, keyless)
+# ---------------------------------------------------------------------------
+MET_NO_PAYLOAD = {
+    "type": "Feature",
+    "properties": {
+        "timeseries": [
+            {
+                "time": "2026-10-25T12:00:00Z",
+                "data": {
+                    "instant": {
+                        "details": {
+                            "air_temperature": 28.4,
+                            "relative_humidity": 91.0,
+                            "wind_speed": 3.2,
+                        }
+                    },
+                    "next_1_hours": {
+                        "summary": {"symbol_code": "rain"},
+                        "details": {
+                            "precipitation_amount": 1.4,
+                            "probability_of_precipitation": 76.0,
+                        },
+                    },
+                },
+            },
+            {
+                "time": "2026-10-25T13:00:00Z",
+                "data": {
+                    "instant": {"details": {"air_temperature": 28.0, "relative_humidity": 90.0}},
+                    "next_1_hours": {"details": {"precipitation_amount": 0.6}},
+                },
+            },
+        ]
+    },
+}
+
+
+def test_met_no_payload_parses():
+    snapshot = weather_risk._parse_met_no(MET_NO_PAYLOAD)
+    assert snapshot.temperature_c == 28.4
+    assert snapshot.humidity_pct == 91.0
+    assert snapshot.precipitation_mm == 2.0        # summed over the next hours
+    assert snapshot.precipitation_probability_pct == 76.0
+    assert snapshot.wind_kph == 11.5                # m/s converted to km/h
+    assert snapshot.source == "met.no"
+
+
+def test_met_no_payload_without_optional_blocks_still_parses():
+    payload = {
+        "properties": {
+            "timeseries": [
+                {"time": "2026-10-25T12:00:00Z",
+                 "data": {"instant": {"details": {"air_temperature": 25.0, "relative_humidity": 70.0}}}}
+            ]
+        }
+    }
+    snapshot = weather_risk._parse_met_no(payload)
+    assert snapshot.temperature_c == 25.0
+    assert snapshot.precipitation_mm == 0.0
+    assert snapshot.precipitation_probability_pct is None
+
+
+def test_met_no_malformed_payload_raises():
+    with pytest.raises(weather_risk.WeatherError):
+        weather_risk._parse_met_no({"properties": {"timeseries": []}})
+    with pytest.raises(weather_risk.WeatherError):
+        weather_risk._parse_met_no({"properties": {"timeseries": [{"data": {}}]}})
+
+
+def test_falls_back_to_met_no_when_open_meteo_is_rate_limited():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if "open-meteo" in request.url.host:
+            return httpx.Response(429)
+        return httpx.Response(200, json=MET_NO_PAYLOAD)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        snapshot = weather_risk.fetch_weather(16.5062, 80.6480, client=http, retries=0)
+
+    assert snapshot.source == "met.no"
+    assert "api.met.no" in seen
+
+
+def test_met_no_request_sends_an_identifying_user_agent():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["ua"] = request.headers.get("user-agent")
+        return httpx.Response(200, json=MET_NO_PAYLOAD)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        weather_risk.fetch_weather(16.5062, 80.6480, client=http)
+
+    assert "CropGuard" in captured["ua"]
+
+
+def test_all_providers_failing_names_each_one():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(weather_risk.WeatherError) as error:
+            weather_risk.fetch_weather(16.5, 80.6, client=http, retries=0)
+
+    message = str(error.value)
+    assert "open-meteo" in message and "met-no" in message
+    assert "OPEN_METEO_API_KEY" in message
+
+
+def test_provider_can_be_pinned(monkeypatch):
+    monkeypatch.setattr(weather_risk.settings, "weather_provider", "met-no", raising=False)
+    assert weather_risk._provider_order() == ["met-no"]
+    monkeypatch.setattr(weather_risk.settings, "weather_provider", "auto", raising=False)
+    assert weather_risk._provider_order() == ["open-meteo", "met-no"]

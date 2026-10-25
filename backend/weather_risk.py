@@ -59,6 +59,7 @@ logger = logging.getLogger("cropguard.weather")
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_CUSTOMER_URL = "https://customer-api.open-meteo.com/v1/forecast"
+MET_NO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 
 RISK_LEVELS = ("Low", "Moderate", "High", "Critical")
 RISK_THRESHOLDS: Tuple[Tuple[int, str], ...] = ((7, "Critical"), (5, "High"), (3, "Moderate"), (0, "Low"))
@@ -124,6 +125,7 @@ def weather_status() -> Dict[str, object]:
         "cache_ttl_seconds": settings.weather_cache_ttl,
         "api_key_configured": bool(settings.open_meteo_api_key),
         "endpoint": "customer" if settings.open_meteo_api_key else "public",
+        "provider_order": _provider_order(),
     }
 
 
@@ -169,6 +171,139 @@ def _level_for(score: int) -> str:
 # ---------------------------------------------------------------------------
 # Fetch
 # ---------------------------------------------------------------------------
+def _request_json(
+    url: str,
+    params: dict,
+    headers: dict,
+    timeout: float,
+    client: Optional[httpx.Client],
+    retries: int,
+) -> dict:
+    """GET with retry on 429/5xx. Raises WeatherError with an actionable message."""
+    own_client = client is None
+    http = client or httpx.Client(timeout=timeout)
+    try:
+        last_error: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                response = http.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as error:
+                status_code = error.response.status_code
+                last_error = error
+                if status_code != 429 and status_code < 500:
+                    raise WeatherError(f"HTTP {status_code}") from error
+                if attempt < retries:
+                    delay = 0.5 * (2 ** attempt)
+                    logger.info(
+                        "weather request throttled (HTTP %s), retrying in %.1fs",
+                        status_code, delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                if status_code == 429:
+                    raise WeatherError("HTTP 429 (rate limited)") from error
+                raise WeatherError(f"HTTP {status_code} after {retries + 1} attempts") from error
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < retries:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise WeatherError("no response in time") from error
+            except httpx.HTTPError as error:
+                raise WeatherError(f"could not be reached: {error}") from error
+            except ValueError as error:
+                raise WeatherError("response was not JSON") from error
+        raise WeatherError(f"could not be reached: {last_error}")
+    finally:
+        if own_client:
+            http.close()
+
+
+def _parse_open_meteo(payload: dict) -> WeatherSnapshot:
+    current = payload.get("current") or {}
+    try:
+        temperature = float(current["temperature_2m"])
+        humidity = float(current["relative_humidity_2m"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise WeatherError("Open-Meteo response is missing temperature or humidity") from error
+
+    precipitation = float(current.get("precipitation") or 0.0)
+    wind = current.get("wind_speed_10m")
+    observed = current.get("time")
+
+    probability = None
+    hourly = payload.get("hourly") or {}
+    probabilities = hourly.get("precipitation_probability") or []
+    if isinstance(probabilities, list) and probabilities:
+        window = [p for p in probabilities[:6] if isinstance(p, (int, float))]
+        if window:
+            probability = float(max(window))
+
+    return WeatherSnapshot(
+        temperature_c=round(temperature, 1),
+        humidity_pct=round(humidity, 1),
+        precipitation_mm=round(precipitation, 2),
+        precipitation_probability_pct=probability,
+        wind_kph=float(wind) if isinstance(wind, (int, float)) else None,
+        observed_at=observed if isinstance(observed, str) else datetime.now(timezone.utc).isoformat(),
+        source="open-meteo",
+    )
+
+
+def _parse_met_no(payload: dict) -> WeatherSnapshot:
+    """Parse MET Norway's locationforecast 2.0 'compact' product.
+
+    Schema: properties.timeseries[] with data.instant.details.air_temperature,
+    relative_humidity and wind_speed, plus an optional next_1_hours block carrying
+    precipitation_amount and probability_of_precipitation. Parsed defensively because
+    MET's terms and schema are stable but the optional blocks are not guaranteed on
+    every entry.
+    """
+    series = (payload.get("properties") or {}).get("timeseries") or []
+    if not isinstance(series, list) or not series:
+        raise WeatherError("MET Norway response has no timeseries")
+
+    entry = series[0]
+    details = ((entry.get("data") or {}).get("instant") or {}).get("details") or {}
+    try:
+        temperature = float(details["air_temperature"])
+        humidity = float(details["relative_humidity"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise WeatherError("MET Norway response is missing temperature or humidity") from error
+
+    precipitation = 0.0
+    probability = None
+    for upcoming in series[:6]:
+        block = ((upcoming.get("data") or {}).get("next_1_hours") or {}).get("details") or {}
+        amount = block.get("precipitation_amount")
+        if isinstance(amount, (int, float)):
+            precipitation += float(amount)
+        chance = block.get("probability_of_precipitation")
+        if isinstance(chance, (int, float)):
+            probability = max(probability or 0.0, float(chance))
+
+    wind = details.get("wind_speed")
+    return WeatherSnapshot(
+        temperature_c=round(temperature, 1),
+        humidity_pct=round(humidity, 1),
+        precipitation_mm=round(precipitation, 2),
+        precipitation_probability_pct=probability,
+        wind_kph=round(float(wind) * 3.6, 1) if isinstance(wind, (int, float)) else None,
+        observed_at=entry.get("time") if isinstance(entry.get("time"), str) else None,
+        source="met.no",
+    )
+
+
+def _provider_order() -> List[str]:
+    """Which providers to try, in order, for this configuration."""
+    configured = (settings.weather_provider or "auto").strip().lower()
+    if configured in {"open-meteo", "met-no"}:
+        return [configured]
+    return ["open-meteo", "met-no"]
+
+
 def fetch_weather(
     latitude: float,
     longitude: float,
@@ -177,16 +312,21 @@ def fetch_weather(
     use_cache: bool = True,
     retries: int = 2,
 ) -> WeatherSnapshot:
-    """Current conditions at a point. Raises WeatherError on any failure.
+    """Current conditions at a point, from the first provider that answers.
 
-    Order of operations, all of it aimed at surviving a shared cloud IP:
+    Providers, in order:
 
-    1. Serve from the in-process cache when the same ~1 km square was fetched within
-       ``WEATHER_CACHE_TTL`` seconds. Repeating a demo submission costs nothing.
-    2. Request the customer endpoint when ``OPEN_METEO_API_KEY`` is set, which is not
-       subject to the free endpoint's per-IP limit.
-    3. Retry 429 and 5xx responses with a short backoff. A rate limit is often a
-       momentary burst rather than a hard block.
+    1. **Open-Meteo** — keyless, or the customer endpoint when ``OPEN_METEO_API_KEY``
+       is set. The free endpoint rate-limits by IP, and cloud hosts share egress IPs,
+       which is what produces HTTP 429 on a deployment.
+    2. **MET Norway** — keyless and free, but requires an identifying User-Agent
+       (``WEATHER_CONTACT``). Different rate limits, so it usually works when the
+       first does not.
+
+    A successful response is cached per ~1 km square for ``WEATHER_CACHE_TTL`` seconds,
+    so repeated submissions from one field cost a single request. If every provider
+    fails, the error names each one, because "weather unavailable" alone is not
+    actionable.
     """
     timeout = timeout or settings.weather_timeout
     key = _cache_key(latitude, longitude)
@@ -207,112 +347,47 @@ def fetch_weather(
                 cached=True,
             )
 
-    params = {
-        "latitude": f"{latitude:.4f}",
-        "longitude": f"{longitude:.4f}",
-        "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
-        "hourly": "precipitation_probability",
-        "forecast_days": 1,
-        "timezone": "auto",
-    }
-    url = OPEN_METEO_URL
-    if settings.open_meteo_api_key:
-        url = OPEN_METEO_CUSTOMER_URL
-        params["apikey"] = settings.open_meteo_api_key
+    failures: List[str] = []
 
-    own_client = client is None
-    http = client or httpx.Client(timeout=timeout)
-    payload = None
-    try:
-        last_error: Optional[Exception] = None
-        for attempt in range(retries + 1):
-            try:
-                response = http.get(url, params=params)
-                response.raise_for_status()
-                payload = response.json()
-                break
-            except httpx.HTTPStatusError as error:
-                status_code = error.response.status_code
-                last_error = error
-                # 429 and 5xx are worth retrying; 4xx other than 429 will not improve.
-                if status_code != 429 and status_code < 500:
-                    raise WeatherError(
-                        f"The weather service returned HTTP {status_code}."
-                    ) from error
-                if attempt < retries:
-                    delay = 0.5 * (2 ** attempt)
-                    logger.info(
-                        "weather request throttled (HTTP %s), retrying in %.1fs",
-                        status_code, delay,
-                    )
-                    time.sleep(delay)
-                    continue
-                if status_code == 429:
-                    raise WeatherError(
-                        "Open-Meteo rate limit reached for this server's IP (HTTP 429). "
-                        "Set OPEN_METEO_API_KEY to use the customer endpoint, or retry "
-                        "in a few minutes. A cached result for this location is reused "
-                        "for WEATHER_CACHE_TTL seconds once one succeeds."
-                    ) from error
-                raise WeatherError(
-                    f"The weather service returned HTTP {status_code} after "
-                    f"{retries + 1} attempts."
-                ) from error
-            except httpx.TimeoutException as error:
-                last_error = error
-                if attempt < retries:
-                    time.sleep(0.5 * (2 ** attempt))
-                    continue
-                raise WeatherError("The weather service did not respond in time.") from error
-            except httpx.HTTPError as error:
-                raise WeatherError(
-                    f"The weather service could not be reached: {error}"
-                ) from error
-            except ValueError as error:
-                raise WeatherError(
-                    "The weather service returned a response that is not JSON."
-                ) from error
+    for provider in _provider_order():
+        try:
+            if provider == "open-meteo":
+                params = {
+                    "latitude": f"{latitude:.4f}",
+                    "longitude": f"{longitude:.4f}",
+                    "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
+                    "hourly": "precipitation_probability",
+                    "forecast_days": 1,
+                    "timezone": "auto",
+                }
+                url = OPEN_METEO_URL
+                if settings.open_meteo_api_key:
+                    url = OPEN_METEO_CUSTOMER_URL
+                    params["apikey"] = settings.open_meteo_api_key
+                payload = _request_json(url, params, {}, timeout, client, retries)
+                snapshot = _parse_open_meteo(payload)
+            else:
+                params = {"lat": f"{latitude:.4f}", "lon": f"{longitude:.4f}"}
+                headers = {"User-Agent": settings.weather_user_agent}
+                payload = _request_json(
+                    MET_NO_URL, params, headers, timeout, client, retries
+                )
+                snapshot = _parse_met_no(payload)
+        except WeatherError as error:
+            failures.append(f"{provider}: {error}")
+            logger.warning("weather provider %s failed for %.4f,%.4f: %s",
+                           provider, latitude, longitude, error)
+            continue
 
-        if payload is None:
-            raise WeatherError(
-                f"The weather service could not be reached: {last_error}"
-            )
-    finally:
-        if own_client:
-            http.close()
+        with _CACHE_LOCK:
+            _CACHE[key] = (time.time(), snapshot)
+        return snapshot
 
-    current = payload.get("current") or {}
-    try:
-        temperature = float(current["temperature_2m"])
-        humidity = float(current["relative_humidity_2m"])
-    except (KeyError, TypeError, ValueError) as error:
-        raise WeatherError(
-            "The weather service response is missing temperature or humidity."
-        ) from error
-
-    precipitation = float(current.get("precipitation") or 0.0)
-    wind = current.get("wind_speed_10m")
-    observed = current.get("time")
-
-    probability = None
-    hourly = payload.get("hourly") or {}
-    probabilities = hourly.get("precipitation_probability") or []
-    if isinstance(probabilities, list) and probabilities:
-        window = [p for p in probabilities[:6] if isinstance(p, (int, float))]
-        if window:
-            probability = float(max(window))
-
-    snapshot = WeatherSnapshot(
-        temperature_c=round(temperature, 1),
-        humidity_pct=round(humidity, 1),
-        precipitation_mm=round(precipitation, 2),
-        precipitation_probability_pct=probability,
-        wind_kph=float(wind) if isinstance(wind, (int, float)) else None,
-        observed_at=observed if isinstance(observed, str) else datetime.now(timezone.utc).isoformat(),
+    raise WeatherError(
+        "all weather providers failed -> " + "; ".join(failures)
+        + ". Set OPEN_METEO_API_KEY (free, non-commercial) to use Open-Meteo's customer "
+        "endpoint, which is not subject to the shared-IP rate limit."
     )
-    with _CACHE_LOCK:
-        _CACHE[key] = (time.time(), snapshot)
-    return snapshot
 
 
 # ---------------------------------------------------------------------------
