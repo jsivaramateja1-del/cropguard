@@ -182,6 +182,26 @@ Verify the export on a real photo before trusting it:
 python train_kaggle.py --predict /path/to/leaf.jpg --out-dir /kaggle/working/export
 ```
 
+### Checking the confidence gate
+
+Validation accuracy alone does not tell you whether the 0.75 expert-review threshold
+works. `calibration_report.py` measures that directly on the same split the training
+run used:
+
+```bash
+python calibration_report.py \
+    --checkpoint /kaggle/working/export/cropguard_mobilenetv3.pth \
+    --data-dirs "/kaggle/input/datasets/abdallahalidev/plantvillage-dataset/color" \
+                "/kaggle/input/datasets/vbookshelf/rice-leaf-diseases/rice_leaf_diseases:Rice" \
+    --crops Tomato Potato Rice
+```
+
+It prints the confidence distribution, the share of predictions below 0.75 / 0.85 /
+0.90, a reliability table (confidence bin vs observed accuracy), per-class mean
+confidence, and — the number that matters — the accuracy gap between predictions
+above and below 0.75. A large gap means the gate separates real errors from reliable
+ones. No gap means the threshold is decorative and should be re-chosen from data.
+
 ## 6. Development artifact (no GPU needed)
 
 ```bash
