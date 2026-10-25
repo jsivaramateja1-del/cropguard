@@ -64,6 +64,55 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _export_onnx(model, dummy, path: str, opset: int) -> str:
+    """Export, coping with torch's two ONNX exporter generations.
+
+    torch < 2.6 has only the legacy TorchScript exporter. torch >= 2.9 defaults to the
+    dynamo exporter, which requires the separate ``onnxscript`` package. Rather than
+    making the caller know which torch they have, try the exporter that needs no extra
+    dependency first and fall back to the other.
+
+    Returns a short description of the exporter that succeeded.
+    """
+    import inspect
+
+    common = dict(
+        input_names=["input"],
+        output_names=["logits"],
+        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+        opset_version=opset,
+        do_constant_folding=True,
+    )
+
+    supports_dynamo = "dynamo" in inspect.signature(torch.onnx.export).parameters
+    attempts = []
+    if supports_dynamo:
+        attempts.append(({"dynamo": False}, "legacy TorchScript (dynamo=False)"))
+        attempts.append(({"dynamo": True}, "dynamo (needs onnxscript)"))
+    else:
+        attempts.append(({}, f"legacy TorchScript (torch {torch.__version__})"))
+
+    missing_dependency = None
+    failures = []
+    for extra, description in attempts:
+        try:
+            torch.onnx.export(model, dummy, path, **common, **extra)
+            return description
+        except Exception as error:  # noqa: BLE001 - try the other exporter
+            missing_dependency = error
+            failures.append(f"{description}: {type(error).__name__}: {error}")
+            print(f"  ! {description} unavailable: {type(error).__name__}: {error}")
+            continue
+
+    raise SystemExit(
+        "ONNX export failed with every exporter this torch build offers.\n"
+        "The most common cause on torch 2.9+ is a missing 'onnxscript' package.\n"
+        "Install it and re-run:\n"
+        "    pip install onnxscript\n\n"
+        "Attempts:\n  " + "\n  ".join(failures)
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -93,16 +142,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     onnx_path = os.path.join(args.out_dir, ONNX_FILENAME)
 
     dummy = torch.randn(1, 3, image_size, image_size)
-    torch.onnx.export(
-        model,
-        dummy,
-        onnx_path,
-        input_names=["input"],
-        output_names=["logits"],
-        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=args.opset,
-        do_constant_folding=True,
-    )
+    exporter = _export_onnx(model, dummy, onnx_path, args.opset)
+    print(f"exporter     : {exporter}")
     size_mb = os.path.getsize(onnx_path) / (1024 * 1024)
     print(f"\nwrote        : {onnx_path} ({size_mb:.1f} MB)")
 

@@ -4,3 +4,10 @@ torch>=2.2,<2.6
 torchvision>=0.17,<0.21
 Pillow>=10.0
 numpy>=1.24
+
+# ONNX export (ml_training/export_onnx.py). torch >= 2.9 defaults to the dynamo
+# exporter, which needs this package; the export script falls back to the legacy
+# exporter when it is absent, so installing it is optional but removes the warning.
+onnxscript>=0.2
+onnx>=1.16
+onnxruntime>=1.17
