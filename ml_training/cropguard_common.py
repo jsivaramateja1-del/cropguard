@@ -177,6 +177,26 @@ def collect_from_roots(specs: Iterable[str]) -> Tuple[Dict[Tuple[Optional[str], 
         total = sum(len(paths) for paths in per_root.values())
         suffix = f" [crop hint: {crop_hint}]" if crop_hint else ""
         notes.append(f"{root}: {len(per_root)} class dirs, {total} images{suffix}")
+
+        # PlantVillage ships colour, greyscale and pre-segmented copies of the same
+        # leaves. Because classes are keyed by directory name, pointing at the
+        # dataset root would merge all three variants into one class and train on
+        # grey duplicates. Warn rather than silently doing that.
+        variants = sorted(
+            {
+                entry.lower()
+                for entry in os.listdir(root)
+                if os.path.isdir(os.path.join(root, entry))
+                and entry.lower() in {"color", "colour", "grayscale", "greyscale", "segmented"}
+            }
+        )
+        if len(variants) > 1:
+            notes.append(
+                f"  ! {root} contains multiple image variants ({', '.join(variants)}). "
+                "Point --data-dirs at the color/ subdirectory so greyscale and "
+                "segmented copies are not merged into the same classes."
+            )
+
         for class_name, paths in per_root.items():
             merged.setdefault((crop_hint, class_name), []).extend(paths)
     return merged, notes
