@@ -53,23 +53,40 @@ Override with `--allow-missing-classes` only when you consciously want a smaller
 
 Public sources that cover the label list (Kaggle, free account required):
 
-| Crop | Dataset to search on Kaggle | Notes |
-|------|-----------------------------|-------|
-| Tomato, Potato | **PlantVillage Dataset** (`abdallahalidev/plantvillage-dataset`) | The canonical 38-class set; use the `color` variant. Covers all 10 tomato and 3 potato labels here. |
-| Rice | **Rice Leaf Diseases Dataset** (`vbookshelf/rice-leaf-diseases`) | Bacterial leaf blight, Brown spot, Leaf smut. |
-| Wheat | **Wheat Leaf Diseases** / **Wheat Disease Dataset** | Yellow rust, Brown rust, Septoria. Check the folder names against the label list with `--inspect-only`. |
-| Mixed field images | **Rice Leaf Disease Images**, **New Plant Diseases Dataset** | Useful for domain shift; merge as extra `--data-dirs`. |
+| Crop | Dataset | Folder layout | Notes |
+|------|---------|---------------|-------|
+| Tomato, Potato | [PlantVillage Dataset](https://www.kaggle.com/datasets/abdallahalidev/plantvillage-dataset) `abdallahalidev/plantvillage-dataset` | `plantvillage dataset/color/Tomato___Early_blight/*.JPG` | 38 classes; use the `color` variant. Covers all 10 tomato and all 3 potato labels. |
+| Rice | [Rice Leaf Diseases](https://www.kaggle.com/datasets/vbookshelf/rice-leaf-diseases) `vbookshelf/rice-leaf-diseases` | `Bacterial leaf blight/`, `Brown spot/`, `Leaf smut/` | 120 real field images from Gujarat. Folders omit the crop name — see the crop hint below. |
+| Rice (larger) | [Rice Plant diseases dataset](https://www.kaggle.com/datasets/jay7080dev/rice-plant-diseases-dataset) `jay7080dev/rice-plant-diseases-dataset` | `Bacterialblight/`, `Brownspot/`, `Leafsmut/` | ~4,700 images, same three classes, also needs a crop hint. |
+| Wheat | search "wheat leaf disease" on Kaggle | varies by uploader | Yellow rust / Brown rust / Septoria are not in PlantVillage, so wheat needs a separate dataset. Verify the folder names with `--inspect-only` before training — I have not validated a specific slug. |
 
-Attach each dataset to the Kaggle notebook, then pass every root with `--data-dirs`. Multiple
-roots are merged; identical canonical labels are combined, so you can layer field images on
-top of PlantVillage.
+Attach datasets to the notebook via *Add Input*, then pass every root with `--data-dirs`.
+Multiple roots are merged; identical canonical labels are combined, so you can layer field
+images on top of PlantVillage.
+
+### Crop hint for folders without a crop name
+
+PlantVillage folders carry the crop (`Tomato___Early_blight`), but the rice and many wheat
+datasets name folders by disease only (`Brown spot`). Those cannot be mapped on their own, so
+append `:Crop` to that root:
+
+```bash
+--data-dirs "/kaggle/input/rice-leaf-diseases:Rice"
+```
+
+`Brown spot` in a `:Rice` root becomes `Rice___Brown_spot`. The hint is used only when the
+bare folder name fails to match, so PlantVillage roots need no hint. If a folder is skipped
+and a crop hint would have rescued it, the script says so explicitly.
 
 Always inspect first — it costs seconds and prints exactly what will be trained:
 
 ```bash
 python train_kaggle.py --data-dirs "/kaggle/input/plantvillage-dataset/plantvillage dataset/color" \
-                       /kaggle/input/rice-leaf-diseases --inspect-only
+                       "/kaggle/input/rice-leaf-diseases:Rice" --inspect-only
 ```
+
+Expect a line per root with its class-dir and image counts, then a per-class coverage table.
+Skipped folders and untrained classes are listed; nothing is silently dropped.
 
 ## 4. Training on Kaggle
 
@@ -78,20 +95,20 @@ python train_kaggle.py --data-dirs "/kaggle/input/plantvillage-dataset/plantvill
 3. Run:
 
 ```python
-!git clone https://github.com/<your-account>/cropguard.git
+!git clone https://github.com/jsivaramateja1-del/cropguard.git
 %cd cropguard/ml_training
 !python train_kaggle.py \
     --data-dirs "/kaggle/input/plantvillage-dataset/plantvillage dataset/color" \
-                /kaggle/input/rice-leaf-diseases \
-                /kaggle/input/wheat-leaf-dataset \
+                "/kaggle/input/rice-leaf-diseases:Rice" \
     --epochs 12 --batch-size 64 --num-workers 2 \
     --out-dir /kaggle/working/export
 ```
 
-12 epochs over PlantVillage + rice + wheat is roughly 40–70 minutes on a T4.
+That trains the 13 PlantVillage tomato/potato classes plus the 3 rice classes (16 of the 21).
+Adding a wheat dataset brings it to 21. Roughly 40–70 minutes on a T4.
 
 Useful flags: `--lr`, `--val-split`, `--dropout`, `--class-weights`, `--no-pretrained`,
-`--seed`, `--early-stop-patience`, `--crops Tomato Rice` (subset).
+`--offline`, `--seed`, `--early-stop-patience`, `--crops Tomato Rice` (subset).
 
 ### What the run prints
 

@@ -140,30 +140,58 @@ def discover_class_dirs(root: str) -> Dict[str, List[str]]:
     return found
 
 
-def collect_from_roots(roots: Iterable[str]) -> Tuple[Dict[str, List[str]], List[str]]:
-    """Merge several dataset roots into {raw class name: [image paths]}.
+KNOWN_CROPS = ("Tomato", "Rice", "Potato", "Wheat")
 
+
+def parse_root_spec(spec: str) -> Tuple[str, Optional[str]]:
+    """Split a dataset root into (path, crop hint).
+
+    Many public datasets name their class folders without the crop, e.g. the
+    rice dataset uses "Bacterial leaf blight" rather than
+    "Rice___Bacterial_leaf_blight". A trailing ``:Crop`` tells the loader which
+    crop those folders belong to:
+
+        /kaggle/input/rice-leaf-diseases:Rice   ->  (/kaggle/input/rice-leaf-diseases, "Rice")
+
+    Only a recognised crop name is treated as a hint, so ordinary paths (and
+    paths containing colons) are left untouched.
+    """
+    head, separator, tail = spec.rpartition(":")
+    if separator and tail.strip().lower() in {crop.lower() for crop in KNOWN_CROPS}:
+        return head, tail.strip().capitalize()
+    return spec, None
+
+
+def collect_from_roots(specs: Iterable[str]) -> Tuple[Dict[Tuple[Optional[str], str], List[str]], List[str]]:
+    """Merge several dataset roots into {(crop hint, raw class name): [image paths]}.
+
+    The crop hint is part of the key so that "Brown spot" from a rice dataset and
+    a hypothetical "Brown spot" from a wheat dataset stay distinct.
     Returns the merged mapping plus a human-readable provenance note per root.
     """
-    merged: Dict[str, List[str]] = {}
+    merged: Dict[Tuple[Optional[str], str], List[str]] = {}
     notes: List[str] = []
-    for root in roots:
+    for spec in specs:
+        root, crop_hint = parse_root_spec(spec)
         per_root = discover_class_dirs(root)
         total = sum(len(paths) for paths in per_root.values())
-        notes.append(f"{root}: {len(per_root)} class dirs, {total} images")
+        suffix = f" [crop hint: {crop_hint}]" if crop_hint else ""
+        notes.append(f"{root}: {len(per_root)} class dirs, {total} images{suffix}")
         for class_name, paths in per_root.items():
-            merged.setdefault(class_name, []).extend(paths)
+            merged.setdefault((crop_hint, class_name), []).extend(paths)
     return merged, notes
 
 
 def build_class_index(
-    raw: Dict[str, List[str]],
+    raw: Dict[Tuple[Optional[str], str], List[str]],
     classes: Sequence[str],
     crops: Optional[Sequence[str]] = None,
     strict: bool = True,
 ) -> Tuple[Dict[str, List[str]], List[str], List[str]]:
     """Map raw dataset folder names onto the canonical label list.
 
+    A folder name is first matched as-is. If that fails and the root carried a
+    crop hint, it is retried as ``<Crop>___<folder>``.
     Returns (canonical_label -> image paths, unmapped raw names, warnings).
     """
     mapping = canonicalize_map(classes)
@@ -172,11 +200,18 @@ def build_class_index(
     index: Dict[str, List[str]] = {}
     unmapped: List[str] = []
     warnings: List[str] = []
+    hint_would_help = False
 
-    for raw_name, paths in raw.items():
+    for (crop_hint, raw_name), paths in raw.items():
         label = canonicalize(raw_name, mapping)
+        if label is None and crop_hint:
+            label = canonicalize(f"{crop_hint}___{raw_name}", mapping)
         if label is None:
-            unmapped.append(raw_name)
+            unmapped.append(raw_name if not crop_hint else f"{raw_name} [{crop_hint} set]")
+            if not crop_hint and any(
+                canonicalize(f"{crop}___{raw_name}", mapping) for crop in KNOWN_CROPS
+            ):
+                hint_would_help = True
             continue
         if wanted_crops and crop_of(label).lower() not in wanted_crops:
             continue
@@ -186,11 +221,17 @@ def build_class_index(
         index[label] = sorted(set(index[label]))
 
     if unmapped:
-        warnings.append(
+        message = (
             f"{len(unmapped)} dataset folder(s) do not map to a supported class and were skipped: "
             + ", ".join(sorted(unmapped)[:12])
             + (" ..." if len(unmapped) > 12 else "")
         )
+        if hint_would_help:
+            message += (
+                "\n    Some of these match a supported class once the crop is known. "
+                "Append the crop to that root, e.g. /path/to/dataset:Rice"
+            )
+        warnings.append(message)
 
     if strict:
         missing = [label for label in classes if label not in index]

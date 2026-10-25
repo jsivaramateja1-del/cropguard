@@ -156,14 +156,16 @@ Full instructions, dataset links and the export contract are in
 
 ```python
 # Kaggle notebook, GPU accelerator + Internet ON
-!git clone https://github.com/<your-account>/cropguard.git
+!git clone https://github.com/jsivaramateja1-del/cropguard.git
 %cd cropguard/ml_training
 !python train_kaggle.py \
     --data-dirs "/kaggle/input/plantvillage-dataset/plantvillage dataset/color" \
-                /kaggle/input/rice-leaf-diseases \
-                /kaggle/input/wheat-leaf-dataset \
+                "/kaggle/input/rice-leaf-diseases:Rice" \
     --epochs 12 --batch-size 64 --out-dir /kaggle/working/export
 ```
+
+Note the `:Rice` suffix: that dataset names its folders by disease only (`Brown spot`), so
+the crop has to be supplied. PlantVillage needs no hint.
 
 The run exports `cropguard_mobilenetv3.pth`, `class_names.json`, `training_log.csv` and
 `training_metrics.json`. Copy the first two into `backend/model/`.

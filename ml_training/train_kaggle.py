@@ -256,7 +256,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--data-dirs",
         nargs="+",
         default=[],
-        help="One or more dataset roots. Each image-bearing subdirectory is treated as a class.",
+        help=(
+            "One or more dataset roots. Each image-bearing subdirectory is treated as a class. "
+            "Append ':Crop' when the folders omit the crop name, e.g. "
+            "/kaggle/input/rice-leaf-diseases:Rice"
+        ),
     )
     parser.add_argument(
         "--crops",
