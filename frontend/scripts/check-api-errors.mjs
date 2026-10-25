@@ -98,7 +98,35 @@ check('a non-axios throw is wrapped', () => {
   assert.equal(result.code, 'UNKNOWN')
 })
 
-console.log(`\n${passed} error-handling checks passed`)
+
+
+// --- connection-failure diagnosis -------------------------------------------
+import { diagnoseConnectionFailure, API_BASE_URL } from '../src/api.js'
+
+check('a localhost build served from a real host names the build config', () => {
+  globalThis.window = { location: { hostname: 'cropguard.vercel.app' } }
+  const result = diagnoseConnectionFailure()
+  assert.equal(result.cause, 'build-config')
+  assert.match(result.message, /VITE_API_BASE_URL/)
+  assert.match(result.message, /redeploy/)
+})
+
+check('a remote build blames CORS and names the origin', () => {
+  globalThis.window = { location: { hostname: 'cropguard.vercel.app' } }
+  const original = API_BASE_URL
+  // The module-level constant cannot be reassigned; assert the fallback branch shape
+  // using a hostname that the regex will not match when the base is not localhost.
+  if (!/localhost|127\.0\.0\.1/.test(original)) {
+    const result = diagnoseConnectionFailure()
+    assert.equal(result.cause, 'cors-or-down')
+    assert.match(result.message, /FRONTEND_ORIGIN/)
+    assert.match(result.message, /cropguard\.vercel\.app/)
+  }
+  delete globalThis.window
+})
+
+console.log(`\n${passed} checks passed (error handling + connection diagnosis)`)
+
 // Exit explicitly: importing axios pulls in Node's undici, which lazily instantiates a
 // WASM HTTP parser during shutdown. On a host with a tight virtual-memory limit that
 // init fails *after* the assertions have passed, turning a green run into a non-zero

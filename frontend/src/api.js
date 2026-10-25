@@ -83,6 +83,38 @@ export function toApiError(error) {
   return new ApiError(error?.message || 'Something went wrong.', { code: 'UNKNOWN' })
 }
 
+/**
+ * Explain a failure to reach the API, distinguishing the two causes that produce the
+ * same "network error" symptom in a browser:
+ *
+ * 1. The bundle was built pointing at a localhost URL, so a deployed site is calling
+ *    the visitor's own machine. Common when VITE_API_BASE_URL is not set at build time.
+ * 2. The backend is reachable but rejects the origin — a CORS misconfiguration. Browsers
+ *    report this as a network failure with no response, which is why the two look alike.
+ */
+export function diagnoseConnectionFailure() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === ''
+  const pointsAtLocalhost = /localhost|127\.0\.0\.1/.test(API_BASE_URL)
+
+  if (pointsAtLocalhost && !isLocalHost) {
+    return {
+      cause: 'build-config',
+      message:
+        `This build is pointing at ${API_BASE_URL}, which is this device — not the server. ` +
+        'Set VITE_API_BASE_URL to your backend URL in the hosting environment and redeploy; ' +
+        'Vite bakes it in at build time, so a refresh will not fix it.',
+    }
+  }
+
+  return {
+    cause: 'cors-or-down',
+    message:
+      `Could not reach ${API_BASE_URL}. If the backend is up (open ${API_BASE_URL}/health), ` +
+      `the likely cause is CORS: add ${host || 'this site'} to FRONTEND_ORIGIN on the backend.`,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------

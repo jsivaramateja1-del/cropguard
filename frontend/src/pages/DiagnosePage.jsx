@@ -8,7 +8,7 @@ import {
   ScanLine,
   Stethoscope,
 } from 'lucide-react'
-import { analyzeLeaf, fetchHealth } from '../api.js'
+import { analyzeLeaf, diagnoseConnectionFailure, fetchHealth } from '../api.js'
 import CropPicker from '../components/CropPicker.jsx'
 import ImagePicker from '../components/ImagePicker.jsx'
 import LocationField from '../components/LocationField.jsx'
@@ -52,8 +52,10 @@ function HealthBanner() {
             : 'The server reports a degraded state. Some features may not work.',
         )
       })
-      .catch((error) => {
-        if (!cancelled) setProblem(error.message)
+      .catch(() => {
+        if (cancelled) return
+        // A bare "network error" hides the two causes that look identical in a browser.
+        setProblem(diagnoseConnectionFailure().message)
       })
     return () => {
       cancelled = true
