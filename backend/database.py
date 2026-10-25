@@ -104,7 +104,9 @@ def database_info() -> dict:
     """Non-secret summary used by /health. Never exposes credentials."""
     dialect = engine.dialect.name
     if IS_SQLITE:
-        target = str(BASE_DIR / "cropguard_local.db")
+        # Report the file actually in use, not the fallback default: a test or a
+        # deployment may point DATABASE_URL at a different SQLite file.
+        target = engine.url.database or ":memory:"
     else:
         target = f"{engine.url.host}:{engine.url.port or 5432}/{engine.url.database}"
     return {"dialect": dialect, "target": target}

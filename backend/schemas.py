@@ -240,6 +240,23 @@ class AdvisoryOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Analyze response
+# ---------------------------------------------------------------------------
+class AnalyzeResponse(BaseModel):
+    """Everything a farmer needs after one photo, in one payload."""
+
+    report: ReportOut
+    advisory: Optional[AdvisoryOut] = None
+    weather: Optional[Dict[str, object]] = None
+    risk: Dict[str, object] = Field(default_factory=dict)
+    review_required: bool = False
+    review_reasons: List[str] = Field(default_factory=list)
+    model: Dict[str, object] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+    disclaimer: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
 class ErrorResponse(BaseModel):

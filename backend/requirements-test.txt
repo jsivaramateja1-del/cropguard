@@ -1,11 +1,26 @@
 # Minimal dependency set for CI and quick local test runs.
 #
-# Deliberately excludes torch, torchvision, cloudinary and the web server: the
-# Phase 2 tests exercise models, schemas and the advisory knowledge base only.
-# Installing torch (~800 MB) just to run schema tests would make CI slow for no
-# benefit. Inference-dependent tests arrive with Phase 3 and get their own job.
+# Deliberately excludes torch and torchvision: `import torch` costs ~528 MB and no
+# test needs it. Inference tests run against a synthetic ONNX graph generated in
+# tests/conftest.py, so the ONNX path is exercised without the PyTorch dependency.
+# The torch backend is verified separately by ml_training/export_onnx.py, which
+# compares both backends on the real checkpoint.
 
+# web framework + test client
+fastapi==0.115.6
+httpx==0.28.1
+python-multipart==0.0.20
+
+# data layer and validation
 SQLAlchemy==2.0.36
 pydantic==2.10.4
 pydantic-settings==2.7.0
+
+# inference (ONNX path) and image handling
+onnx==1.17.0
+onnxruntime==1.20.1
+numpy==2.1.3
+Pillow==11.1.0
+
+# tests
 pytest==8.3.4

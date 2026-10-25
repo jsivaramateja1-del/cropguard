@@ -1,0 +1,34 @@
+# Deployment dependencies for a small CPU host (Render Free: 0.1 CPU / 512 MB).
+#
+# Deliberately excludes torch and torchvision. Measured peak memory:
+#   PyTorch stack   : 660 MB  -> exceeds the 512 MB limit before serving a request
+#   ONNX Runtime    : 151 MB  -> comfortable, and 21 ms per image on 2 vCPU
+#
+# Serve the ONNX artifact (backend/model/cropguard_mobilenetv3.onnx) with this file:
+#   pip install -r requirements-deploy.txt
+#
+# Local development still uses requirements.txt, which includes torch.
+
+# --- web framework -----------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# --- data layer --------------------------------------------------------------
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.10
+
+# --- validation / config -----------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# --- outbound HTTP (Open-Meteo weather) --------------------------------------
+httpx==0.28.1
+
+# --- image handling ----------------------------------------------------------
+Pillow==11.1.0
+cloudinary==1.41.0
+
+# --- inference ---------------------------------------------------------------
+onnxruntime==1.20.1
+numpy==2.1.3

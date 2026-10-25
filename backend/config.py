@@ -41,6 +41,17 @@ class Settings(BaseSettings):
 
     # Model artifacts, resolved relative to backend/
     model_path: str = "model/cropguard_mobilenetv3.pth"
+    onnx_path: str = "model/cropguard_mobilenetv3.onnx"
+    class_names_path: str = "model/class_names.json"
+    model_backend: str = "auto"  # auto | onnx | torch
+
+    # Decision thresholds (see docs/calibration.md before changing)
+    confidence_threshold: float = 0.75
+
+    # Uploads
+    max_upload_mb: int = 8
+    min_image_pixels: int = 96
+    max_image_pixels: int = 6000
 
     # API
     frontend_origin: str = "http://localhost:5173"
@@ -53,10 +64,25 @@ class Settings(BaseSettings):
         origins = [origin.strip() for origin in self.frontend_origin.split(",")]
         return [origin for origin in origins if origin]
 
+    def _resolve(self, value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else (BASE_DIR / path).resolve()
+
     @property
     def model_path_resolved(self) -> Path:
-        path = Path(self.model_path)
-        return path if path.is_absolute() else (BASE_DIR / path).resolve()
+        return self._resolve(self.model_path)
+
+    @property
+    def onnx_path_resolved(self) -> Path:
+        return self._resolve(self.onnx_path)
+
+    @property
+    def class_names_path_resolved(self) -> Path:
+        return self._resolve(self.class_names_path)
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def cloudinary_enabled(self) -> bool:
