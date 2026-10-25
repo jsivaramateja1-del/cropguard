@@ -359,7 +359,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # ---- discovery -------------------------------------------------------
     print("\n[1/6] Discovering datasets")
-    raw, notes = collect_from_roots(args.data_dirs)
+    try:
+        raw, notes = collect_from_roots(args.data_dirs)
+    except NotADirectoryError as error:
+        print(f"\nERROR: {error}")
+        return 2
     for note in notes:
         print(f"  - {note}")
 

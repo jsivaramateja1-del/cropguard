@@ -115,6 +115,56 @@ def is_image_file(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS
 
 
+def describe_missing_root(root: str, max_matches: int = 5, max_depth: int = 4) -> str:
+    """Explain why ``root`` is missing and suggest directories that do exist.
+
+    Kaggle mount paths are easy to get wrong (the slug is not the display title,
+    and a zip's top-level folder is sometimes dropped), so a bare
+    'No such file or directory' wastes a GPU session. This walks up to the
+    nearest existing ancestor, lists what is there, and looks for directories
+    with the same name a few levels down.
+    """
+    absolute = os.path.abspath(root)
+    lines = [f"Dataset directory does not exist: {root}"]
+
+    ancestor = absolute
+    while not os.path.isdir(ancestor) and os.path.dirname(ancestor) != ancestor:
+        ancestor = os.path.dirname(ancestor)
+
+    if not os.path.isdir(ancestor):
+        return "\n".join(lines)
+
+    lines.append(f"Nearest existing directory: {ancestor}")
+    try:
+        entries = sorted(os.listdir(ancestor))[:12]
+    except OSError:
+        entries = []
+    if entries:
+        lines.append("It contains: " + ", ".join(entries))
+
+    target = os.path.basename(os.path.normpath(absolute)).lower()
+    if target:
+        matches: List[str] = []
+        base_depth = ancestor.rstrip(os.sep).count(os.sep)
+        for current, subdirs, _files in os.walk(ancestor):
+            if current.rstrip(os.sep).count(os.sep) - base_depth >= max_depth:
+                subdirs[:] = []
+            if os.path.basename(current).lower() == target and current != absolute:
+                matches.append(current)
+                if len(matches) >= max_matches:
+                    break
+        if matches:
+            lines.append("Directories with that name that do exist:")
+            lines.extend(f"  {match}" for match in matches)
+
+    lines.append(
+        "Hint: on Kaggle the mount is named after the dataset slug, e.g. "
+        "/kaggle/input/plantvillage-dataset, and a zip's wrapper folder is "
+        "sometimes dropped. List /kaggle/input to check."
+    )
+    return "\n".join(lines)
+
+
 def discover_class_dirs(root: str) -> Dict[str, List[str]]:
     """Walk ``root`` and treat every image-bearing directory as one class.
 
@@ -123,7 +173,7 @@ def discover_class_dirs(root: str) -> Dict[str, List[str]]:
     by only registering directories that directly contain image files.
     """
     if not os.path.isdir(root):
-        raise NotADirectoryError(f"Dataset directory does not exist: {root}")
+        raise NotADirectoryError(describe_missing_root(root))
 
     found: Dict[str, List[str]] = {}
     for current, _subdirs, filenames in os.walk(root):
