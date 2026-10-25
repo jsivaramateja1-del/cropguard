@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-soil-50 text-leaf-900 antialiased;
+    /* Respect the notch on phones so the footer is never clipped. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* A visible, high-contrast focus ring: this app is used outdoors, often with
+     gloves, and is keyboard-navigable on desktop. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-leaf-600 ring-offset-2 ring-offset-soil-50;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight text-leaf-900;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-soil-200 bg-white shadow-card;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-semibold text-leaf-800;
+  }
+
+  .field-hint {
+    @apply mt-1 text-xs leading-relaxed text-soil-600;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-soil-300 bg-white px-3 py-2.5 text-base
+      text-leaf-900 placeholder:text-soil-400 focus:border-leaf-500;
+  }
+
+  .btn {
+    @apply inline-flex min-h-touch items-center justify-center gap-2 rounded-lg px-4
+      text-base font-semibold transition-colors disabled:cursor-not-allowed
+      disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-leaf-700 text-white hover:bg-leaf-800 active:bg-leaf-900;
+  }
+
+  .btn-secondary {
+    @apply btn border border-soil-300 bg-white text-leaf-800 hover:bg-soil-100;
+  }
+
+  .btn-ghost {
+    @apply btn text-leaf-700 hover:bg-leaf-50;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  .section-title {
+    @apply text-xs font-bold uppercase tracking-wider text-soil-600;
+  }
+}
