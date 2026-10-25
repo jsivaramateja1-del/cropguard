@@ -346,6 +346,21 @@ class ModelService:
                 f"{self.class_names_path.name} is missing or empty; the label order "
                 "cannot be reconstructed from an ONNX graph."
             )
+
+        # Guard against the most dangerous mismatch in the whole system: a graph with N
+        # outputs paired with a label list of a different length. Indices would still be
+        # in range, so predictions would look plausible while naming the wrong disease.
+        output_shape = self._session.get_outputs()[0].shape
+        if len(output_shape) == 2 and isinstance(output_shape[1], int):
+            graph_classes = int(output_shape[1])
+            if graph_classes != len(names):
+                raise ModelUnavailable(
+                    f"Label mismatch: the ONNX graph outputs {graph_classes} classes but "
+                    f"{self.class_names_path.name} lists {len(names)}. Upload the "
+                    f"class_names.json written by export_onnx.py alongside the .onnx — "
+                    "a mismatched label list would name the wrong disease."
+                )
+
         self._class_names = names
         self._artifact_type = self._infer_artifact_type_from_name()
         self._model_version = f"mobilenet_v3_large/{self._artifact_type}"

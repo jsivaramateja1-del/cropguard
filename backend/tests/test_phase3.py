@@ -612,3 +612,31 @@ def test_model_path_pointing_at_onnx_is_honoured(tmp_path):
 
 def test_head_root_answers(client):
     assert client.head("/").status_code == 200
+
+
+def test_label_mismatch_is_refused(tmp_path):
+    """A 4-class graph paired with a 3-label list must not load.
+
+    Without this guard the indices would still be in range and the API would return a
+    confident diagnosis with the wrong disease name.
+    """
+    import shutil
+
+    source = inference.settings.onnx_path_resolved
+    target = tmp_path / "cropguard_mobilenetv3.onnx"
+    shutil.copyfile(source, target)
+    (tmp_path / "class_names.json").write_text(
+        json.dumps(["Tomato___Early_blight", "Tomato___Late_blight", "Tomato___healthy"]),
+        encoding="utf-8",
+    )
+
+    service = ModelService(
+        onnx_path=target,
+        torch_path=tmp_path / "none.pth",
+        class_names_path=tmp_path / "class_names.json",
+    )
+    with pytest.raises(ModelUnavailable) as error:
+        service.load()
+    message = str(error.value)
+    assert "Label mismatch" in message
+    assert "4 classes" in message and "3" in message

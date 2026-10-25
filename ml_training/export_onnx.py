@@ -155,8 +155,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     print("\nOK — the ONNX graph is numerically equivalent to the checkpoint.")
-    print("Upload this file to the repository so the deployed backend can serve it:")
+    print("\nUpload BOTH files to the repository, or the backend will refuse to load them:")
     print(f"  {onnx_path}")
+    print(f"  {names_path}")
+    print("The class_names.json must be the one written here — it matches this graph's")
+    print("label order. Uploading the .onnx alone leaves a mismatched label list behind.")
     print("On github.com: backend/model/ -> Add file -> Upload files -> commit.")
     print("Peak memory with onnxruntime is ~151 MB, versus ~660 MB with torch.")
     return 0
