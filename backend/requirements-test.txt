@@ -1,0 +1,11 @@
+# Minimal dependency set for CI and quick local test runs.
+#
+# Deliberately excludes torch, torchvision, cloudinary and the web server: the
+# Phase 2 tests exercise models, schemas and the advisory knowledge base only.
+# Installing torch (~800 MB) just to run schema tests would make CI slow for no
+# benefit. Inference-dependent tests arrive with Phase 3 and get their own job.
+
+SQLAlchemy==2.0.36
+pydantic==2.10.4
+pydantic-settings==2.7.0
+pytest==8.3.4
