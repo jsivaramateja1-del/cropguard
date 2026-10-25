@@ -8,12 +8,24 @@ code degrades to a documented development fallback when it is missing.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def glob_to_regex(pattern: str) -> str:
+    """Turn an origin with a single ``*`` into an anchored regex.
+
+    ``https://*.vercel.app`` becomes ``https://[^./]+\\.vercel\\.app``. The wildcard
+    matches one host label only, so a lookalike such as ``https://vercel.app.evil.com``
+    or ``https://a.b.vercel.app`` cannot slip through.
+    """
+    escaped = re.escape(pattern)
+    return escaped.replace(r"\*", r"[^./]+")
 ENV_FILE = BASE_DIR / ".env"
 
 
@@ -65,15 +77,36 @@ class Settings(BaseSettings):
     max_image_pixels: int = 6000
 
     # API
+    # Comma-separated browser origins. An entry may contain a single wildcard label,
+    # e.g. https://*.vercel.app, which is matched by regex instead of exactly.
     frontend_origin: str = "http://localhost:5173"
+    # Escape hatch for an arbitrary pattern; combined with any wildcard entries above.
+    frontend_origin_regex: str = ""
     log_level: str = "INFO"
 
     # ------------------------------------------------------------------ helpers
     @property
+    def _origin_entries(self) -> List[str]:
+        return [entry.strip() for entry in self.frontend_origin.split(",") if entry.strip()]
+
+    @property
     def cors_origins(self) -> List[str]:
-        """FRONTEND_ORIGIN may list several comma-separated origins."""
-        origins = [origin.strip() for origin in self.frontend_origin.split(",")]
-        return [origin for origin in origins if origin]
+        """Exact origins only. Wildcard entries are handled by cors_origin_regex."""
+        return [entry for entry in self._origin_entries if "*" not in entry]
+
+    @property
+    def cors_origin_regex(self) -> Optional[str]:
+        """Regex matching any wildcard origin entries.
+
+        Vercel gives every deployment its own hostname (project-hash-team.vercel.app),
+        so an exact allow-list breaks on each deploy. A pattern survives that.
+        """
+        patterns = [glob_to_regex(entry) for entry in self._origin_entries if "*" in entry]
+        if self.frontend_origin_regex.strip():
+            patterns.append(self.frontend_origin_regex.strip())
+        if not patterns:
+            return None
+        return "|".join(f"(?:{pattern})" for pattern in patterns)
 
     def _resolve(self, value: str) -> Path:
         path = Path(value)

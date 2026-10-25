@@ -943,3 +943,80 @@ def test_provider_can_be_pinned(monkeypatch):
     assert weather_risk._provider_order() == ["met-no"]
     monkeypatch.setattr(weather_risk.settings, "weather_provider", "auto", raising=False)
     assert weather_risk._provider_order() == ["open-meteo", "met-no"]
+
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+def test_glob_to_regex_matches_one_label_only():
+    from config import glob_to_regex
+
+    pattern = glob_to_regex("https://*.vercel.app")
+    import re
+
+    assert re.fullmatch(pattern, "https://cropguard-l7a2ktqmx-jsivaramateja1-8889.vercel.app")
+    assert re.fullmatch(pattern, "https://cropguard-blush.vercel.app")
+    # One label only: these must not match.
+    assert not re.fullmatch(pattern, "https://a.b.vercel.app")
+    assert not re.fullmatch(pattern, "https://vercel.app.evil.com")
+    assert not re.fullmatch(pattern, "http://cropguard.vercel.app")
+
+
+def test_configured_origin_is_allowed(client):
+    response = client.get("/health", headers={"Origin": "http://localhost:5173"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_unknown_origin_gets_no_cors_header(client):
+    response = client.get("/health", headers={"Origin": "https://not-allowed.example.com"})
+    assert response.headers.get("access-control-allow-origin") is None
+
+
+def test_preflight_for_analyze_is_answered(client):
+    response = client.options(
+        "/api/analyze",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert "POST" in response.headers.get("access-control-allow-methods", "")
+
+
+def test_wildcard_origin_regex_is_used_when_configured(monkeypatch):
+    """A Vercel deployment hostname must pass when the pattern is configured."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    monkeypatch.setattr(
+        main.settings, "frontend_origin", "http://localhost:5173,https://*.vercel.app",
+        raising=False,
+    )
+    probe = FastAPI()
+    probe.add_middleware(
+        CORSMiddleware,
+        allow_origins=main.settings.cors_origins,
+        allow_origin_regex=main.settings.cors_origin_regex,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @probe.get("/ping")
+    def ping():
+        return {"ok": True}
+
+    with TestClient(probe) as client:
+        allowed = client.get(
+            "/ping",
+            headers={"Origin": "https://cropguard-l7a2ktqmx-jsivaramateja1-8889.vercel.app"},
+        )
+        assert allowed.headers.get("access-control-allow-origin") == (
+            "https://cropguard-l7a2ktqmx-jsivaramateja1-8889.vercel.app"
+        )
+        blocked = client.get("/ping", headers={"Origin": "https://evil.example.com"})
+        assert blocked.headers.get("access-control-allow-origin") is None
