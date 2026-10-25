@@ -49,7 +49,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="PyTorch checkpoint produced by train_kaggle.py",
     )
     parser.add_argument("--out-dir", default=default_model_dir)
-    parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument(
+        "--opset",
+        type=int,
+        default=18,
+        help="ONNX opset. 18 is the minimum the dynamo exporter implements.",
+    )
+    parser.add_argument(
+        "--exporter",
+        choices=["auto", "legacy", "dynamo"],
+        default="auto",
+        help=(
+            "auto tries the legacy TorchScript exporter first, then dynamo. "
+            "Force 'legacy' to keep the weights inside a single file."
+        ),
+    )
     parser.add_argument(
         "--tolerance",
         type=float,
@@ -64,13 +78,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _export_onnx(model, dummy, path: str, opset: int) -> str:
+def _export_onnx(model, dummy, path: str, opset: int, exporter: str = "auto") -> str:
     """Export, coping with torch's two ONNX exporter generations.
 
     torch < 2.6 has only the legacy TorchScript exporter. torch >= 2.9 defaults to the
-    dynamo exporter, which requires the separate ``onnxscript`` package. Rather than
-    making the caller know which torch they have, try the exporter that needs no extra
-    dependency first and fall back to the other.
+    dynamo exporter, which requires the separate ``onnxscript`` package, wants opset 18
+    or newer, and dislikes ``dynamic_axes``.
+
+    Deliberate choices here:
+
+    * **No dynamic axes.** The API always sends exactly one image, so a fixed
+      ``[1, 3, 224, 224]`` input is honest and avoids the dynamo/dynamic_shapes
+      incompatibility entirely.
+    * **``external_data=False``** where supported. Otherwise a newer exporter can split
+      the 16.8 MB of weights into a sidecar file, leaving a 0.3 MB ``.onnx`` that is
+      useless on its own and fails silently at load time.
+    * **A size check after export.** A MobileNetV3-Large graph below a few MB is not a
+      complete model, whatever the exporter claims.
 
     Returns a short description of the exporter that succeeded.
     """
@@ -79,38 +103,57 @@ def _export_onnx(model, dummy, path: str, opset: int) -> str:
     common = dict(
         input_names=["input"],
         output_names=["logits"],
-        dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
         opset_version=opset,
         do_constant_folding=True,
     )
 
-    supports_dynamo = "dynamo" in inspect.signature(torch.onnx.export).parameters
-    attempts = []
-    if supports_dynamo:
-        attempts.append(({"dynamo": False}, "legacy TorchScript (dynamo=False)"))
-        attempts.append(({"dynamo": True}, "dynamo (needs onnxscript)"))
-    else:
-        attempts.append(({}, f"legacy TorchScript (torch {torch.__version__})"))
+    signature = inspect.signature(torch.onnx.export).parameters
+    supports_dynamo = "dynamo" in signature
+    supports_external_data = "external_data" in signature
 
-    missing_dependency = None
+    attempts = []
+    if exporter in {"auto", "legacy"}:
+        attempts.append(({"dynamo": False} if supports_dynamo else {}, "legacy TorchScript"))
+    if exporter in {"auto", "dynamo"}:
+        extra = {"dynamo": True} if supports_dynamo else {}
+        if supports_external_data:
+            extra["external_data"] = False
+        attempts.append((extra, "dynamo"))
+
     failures = []
     for extra, description in attempts:
         try:
             torch.onnx.export(model, dummy, path, **common, **extra)
             return description
         except Exception as error:  # noqa: BLE001 - try the other exporter
-            missing_dependency = error
             failures.append(f"{description}: {type(error).__name__}: {error}")
-            print(f"  ! {description} unavailable: {type(error).__name__}: {error}")
+            print(f"  ! {description} exporter failed: {type(error).__name__}: {error}")
             continue
 
     raise SystemExit(
         "ONNX export failed with every exporter this torch build offers.\n"
-        "The most common cause on torch 2.9+ is a missing 'onnxscript' package.\n"
-        "Install it and re-run:\n"
-        "    pip install onnxscript\n\n"
-        "Attempts:\n  " + "\n  ".join(failures)
+        "Attempts:\n  " + "\n  ".join(failures) + "\n\n"
+        "If the only error is a missing 'onnxscript', install it and re-run:\n"
+        "    pip install onnxscript onnxruntime\n"
     )
+
+
+def _check_artifact(path: str, num_classes: int) -> None:
+    """Refuse to call an incomplete graph a success."""
+    size_mb = os.path.getsize(path) / (1024 * 1024)
+    # 4.2 M parameters of float32 is ~16.8 MB; anything far below that has lost its
+    # weights (typically to an external-data sidecar) and will fail at load time.
+    if size_mb < 5.0:
+        raise SystemExit(
+            f"The exported graph is only {size_mb:.2f} MB, which is far too small for "
+            f"{num_classes} classes of MobileNetV3-Large (~16.8 MB of weights).\n"
+            "Its weights were almost certainly written to a separate file, which the "
+            "backend cannot use.\n\n"
+            "Re-run forcing the legacy exporter, which keeps everything in one file:\n"
+            "    python export_onnx.py --exporter legacy ...\n"
+            "If that is unsupported on your torch, install the older-style dependencies:\n"
+            "    pip install onnxscript onnxruntime\n"
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -142,8 +185,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     onnx_path = os.path.join(args.out_dir, ONNX_FILENAME)
 
     dummy = torch.randn(1, 3, image_size, image_size)
-    exporter = _export_onnx(model, dummy, onnx_path, args.opset)
+    exporter = _export_onnx(model, dummy, onnx_path, args.opset, args.exporter)
     print(f"exporter     : {exporter}")
+    _check_artifact(onnx_path, len(class_names))
     size_mb = os.path.getsize(onnx_path) / (1024 * 1024)
     print(f"\nwrote        : {onnx_path} ({size_mb:.1f} MB)")
 
