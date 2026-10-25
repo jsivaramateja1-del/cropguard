@@ -87,6 +87,9 @@ export default function DiagnosePage() {
   const [uploadPercent, setUploadPercent] = useState(0)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  // Shown when the form is incomplete. The button used to be disabled in that case,
+  // so a tap did nothing and explained nothing — the worst kind of dead end.
+  const [notice, setNotice] = useState(null)
 
   const previewRef = useRef(null)
 
@@ -126,7 +129,18 @@ export default function DiagnosePage() {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    if (!canSubmit) return
+    if (busy) return
+
+    if (!canSubmit) {
+      const gaps = []
+      if (!file) gaps.push('a leaf photo')
+      if (farmerName.trim().length < 2) gaps.push('your name (at least 2 letters)')
+      if (!hasCoords) gaps.push('your location — tap “Use my location” or enter coordinates')
+      setNotice(`Before analysing, add ${gaps.join(', ')}.`)
+      return
+    }
+
+    setNotice(null)
 
     setError(null)
     setResult(null)
@@ -254,7 +268,15 @@ export default function DiagnosePage() {
           )}
 
           <div className="space-y-2">
-            <button type="submit" className="btn-primary w-full" disabled={!canSubmit}>
+            {notice && (
+              <p
+                role="alert"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-soil-800"
+              >
+                {notice}
+              </p>
+            )}
+            <button type="submit" className="btn-primary w-full" disabled={busy}>
               {busy ? (
                 <Loader2 size={18} className="animate-spin" aria-hidden="true" />
               ) : (
