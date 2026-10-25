@@ -300,10 +300,17 @@ def assess_location(
     advisory_entry: Optional[dict] = None,
     timeout: float = 8.0,
 ) -> Tuple[Optional[WeatherSnapshot], RiskAssessment]:
-    """Fetch and score in one step, degrading gracefully when weather is down."""
+    """Fetch and score in one step, degrading gracefully when weather is down.
+
+    The failure reason is carried on the assessment rather than swallowed, so the API
+    can tell a farmer *why* the risk is missing ("did not respond in time" versus
+    "HTTP 429") instead of only that it is.
+    """
     try:
         snapshot = fetch_weather(latitude, longitude, timeout=timeout)
     except WeatherError as error:
         logger.warning("weather unavailable for %.4f,%.4f: %s", latitude, longitude, error)
-        return None, compute_risk(None, advisory_entry)
+        assessment = compute_risk(None, advisory_entry)
+        assessment.reason = f"Weather data unavailable: {error}"
+        return None, assessment
     return snapshot, compute_risk(snapshot, advisory_entry)

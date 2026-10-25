@@ -663,3 +663,43 @@ def test_timestamps_carry_utc_offset(client, leaf_jpeg):
         data={"condition_status": "Recovering"},
     ).json()
     assert followup["created_at"].endswith("+00:00"), followup["created_at"]
+
+
+def test_weather_endpoint_reports_conditions(client, monkeypatch):
+    from weather_risk import WeatherSnapshot
+
+    def fake_fetch(latitude, longitude, timeout=8.0, client=None):
+        return WeatherSnapshot(
+            temperature_c=29.0, humidity_pct=91.0, precipitation_mm=3.0,
+            precipitation_probability_pct=80.0, wind_kph=9.0, observed_at="2026-10-25T12:00",
+        )
+
+    monkeypatch.setattr(weather_risk, "fetch_weather", fake_fetch)
+    response = client.get("/api/weather", params={"latitude": 16.5062, "longitude": 80.648})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["weather"]["temperature_c"] == 29.0
+    assert payload["risk"]["available"] is True
+    assert payload["risk"]["level"] in {"High", "Critical"}
+
+
+def test_weather_endpoint_carries_the_failure_reason(client, monkeypatch):
+    """The reason must name the cause, not just say 'unavailable'."""
+    def failing_fetch(*_args, **_kwargs):
+        raise weather_risk.WeatherError("The weather service returned HTTP 429.")
+
+    monkeypatch.setattr(weather_risk, "fetch_weather", failing_fetch)
+    payload = client.get(
+        "/api/weather", params={"latitude": 16.5062, "longitude": 80.648}
+    ).json()
+    assert payload["weather"] is None
+    assert payload["risk"]["available"] is False
+    assert "HTTP 429" in payload["risk"]["reason"]
+
+
+def test_weather_endpoint_rejects_unknown_disease(client):
+    response = client.get(
+        "/api/weather",
+        params={"latitude": 16.5, "longitude": 80.6, "disease": "Tomato___Nope"},
+    )
+    assert response.status_code == 422

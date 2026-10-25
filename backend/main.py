@@ -233,6 +233,7 @@ def root() -> dict:
             "GET /api/reports/{id}",
             "PATCH /api/reports/{id}/verify",
             "POST /api/reports/{id}/followup",
+            "GET /api/weather",
             "GET /api/stats",
             "GET /health",
         ],
@@ -402,6 +403,36 @@ def analyze(
         warnings=warnings,
         disclaimer=advisory_module.disclaimer(),
     )
+
+
+@app.get("/api/weather", summary="Weather and disease risk for a location")
+def get_weather(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    disease: Optional[str] = Query(
+        default=None,
+        description="Optional class label; its weather sensitivity refines the score",
+    ),
+) -> dict:
+    """Weather conditions and the deterministic risk band for one point.
+
+    Useful on its own (the outbreak map colours by risk) and as a diagnostic: if
+    /api/analyze reports the risk unavailable, this endpoint says why.
+    """
+    entry = advisory_module.get_advisory(disease) if disease else None
+    if disease and entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"'{disease}' is not a supported class.",
+        )
+
+    snapshot, risk = assess_location(latitude, longitude, entry)
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "weather": snapshot.as_dict() if snapshot else None,
+        "risk": risk.as_dict(),
+        "advisory_label": disease,
+    }
 
 
 # ---------------------------------------------------------------------------
