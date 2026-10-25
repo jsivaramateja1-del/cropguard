@@ -64,6 +64,34 @@ Attach datasets to the notebook via *Add Input*, then pass every root with `--da
 Multiple roots are merged; identical canonical labels are combined, so you can layer field
 images on top of PlantVillage.
 
+### Finding the mounted paths
+
+Kaggle mounts an attached dataset under its **slug**, not its display title, and the prefix
+varies by environment — you may see `/kaggle/input/<slug>/` or
+`/kaggle/input/datasets/<owner>/<slug>/`. Never hardcode either; search the tree:
+
+```python
+import glob, os
+hits = sorted(glob.glob("/kaggle/input/**/Tomato___Early_blight", recursive=True))
+print(hits[:4])
+rice = sorted(glob.glob("/kaggle/input/**/Brown spot", recursive=True))
+print(rice[:2])
+```
+
+Two things to watch for in the result:
+
+* **PlantVillage ships duplicate copies.** The mirror can contain both
+  `<dataset>/color/` and `<dataset>/plantvillage dataset/color/`, alongside `grayscale/` and
+  `segmented/`. Point `--data-dirs` at a single `color/` directory. Pointing at the dataset
+  root trains on the same leaf several times over in different renderings, which inflates the
+  image count and quietly hurts the model. The script warns when it sees multiple variants
+  directly under a root.
+* **Rice nests one level deeper:** `<dataset>/rice_leaf_diseases/Brown spot`, so the root to
+  pass is the `rice_leaf_diseases` directory.
+
+A missing root now reports the nearest existing directory, its contents, and same-named
+directories that do exist, so a wrong path is one run away from being obvious.
+
 ### Crop hint for folders without a crop name
 
 PlantVillage folders carry the crop (`Tomato___Early_blight`), but the rice and many wheat
