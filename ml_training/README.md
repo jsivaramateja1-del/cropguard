@@ -156,7 +156,45 @@ will not present its output as a diagnosis.
 Overwrite it with the real export before any demo. `generate_starter_model.py` refuses to
 overwrite a checkpoint tagged `trained` unless you pass `--force`.
 
-## 7. Honest limitations
+## 7. Troubleshooting
+
+**`Temporary failure in name resolution` / `Could not resolve host: github.com`**
+The notebook has no internet. Two consequences: `git clone` fails, and torchvision cannot
+fetch the ImageNet weights. The script no longer crashes on the second one — it prints a
+warning, falls back to random initialisation and keeps training, which is fine for a wiring
+test but not for a real run. Fix it one of two ways:
+
+* Turn internet on: **Settings → Internet → On** (needs a phone-verified Kaggle account),
+  then re-run. Confirm with `!curl -s -o /dev/null -w "%{http_code}\n" https://download.pytorch.org`
+  — expect `200`.
+* Stay offline and skip the download attempt entirely: add `--offline`. Training then runs
+  from scratch and needs many more epochs to reach useful accuracy.
+
+Either way `training_metrics.json` and the checkpoint record `backbone_pretrained`, so an
+export never overstates what it was trained from.
+
+**`torch 2.x+cpu` and `device: cpu`**
+No accelerator is attached. Set **Settings → Accelerator → GPU T4 x2**. A GPU session reports
+the CUDA build of torch and `device: cuda (Tesla T4)` with `AMP: on`.
+
+**`No such file or directory: /kaggle/input/<your-dataset-slug>/...`**
+That was a literal placeholder. Find the real path instead of guessing:
+
+```python
+import glob, os
+hits = glob.glob("/kaggle/input/*/**/train_kaggle.py", recursive=True)
+print(hits); os.chdir(os.path.dirname(hits[0])); print(os.getcwd())
+```
+
+**Writes fail under `/kaggle/input`**
+Attached datasets are mounted read-only. Always pass `--out-dir /kaggle/working/export`.
+
+**`Training aborted: no images found for these supported classes`**
+A supported class has no images in the roots you passed. Add the dataset, narrow with
+`--crops`, or use `--allow-missing-classes` deliberately. Run `--inspect-only` first to see
+what was actually discovered.
+
+## 8. Honest limitations
 
 * PlantVillage images are lab-captured on plain backgrounds. Accuracy on phone photos taken
   in a field will be lower; add field datasets and re-train before judging real-world

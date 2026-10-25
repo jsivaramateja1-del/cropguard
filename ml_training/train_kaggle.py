@@ -285,6 +285,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Start from random weights instead of ImageNet weights (not recommended).",
     )
     parser.add_argument(
+        "--offline",
+        action="store_true",
+        help=(
+            "Do not attempt to download ImageNet weights. Use in offline notebooks; "
+            "the run then trains from random init unless the weights are already cached."
+        ),
+    )
+    parser.add_argument(
         "--allow-missing-classes",
         action="store_true",
         help="Train on whatever classes exist instead of aborting when one is missing.",
@@ -417,7 +425,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         num_classes=len(present),
         pretrained=not args.no_pretrained,
         dropout=args.dropout,
+        allow_download=not args.offline,
     ).to(device)
+    backbone_pretrained = bool(getattr(model, "cropguard_pretrained", False))
     print(f"  trainable parameters: {count_parameters(model):,}")
     print(f"  classifier head     : {model.classifier[-1]}")
 
@@ -520,6 +530,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "train_samples": len(train_samples),
                     "val_samples": len(val_samples),
                     "crops": sorted({crop_of(label) for label in present}),
+                    "backbone_pretrained": backbone_pretrained,
                     "data_dirs": list(args.data_dirs),
                     "per_class_accuracy": best_metrics["per_class_accuracy"],
                 },
@@ -566,6 +577,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "train_samples": len(train_samples),
         "val_samples": len(val_samples),
         "image_size": image_size,
+        "backbone_pretrained": backbone_pretrained,
         "batch_size": args.batch_size,
         "learning_rate": args.lr,
         "class_names": present,

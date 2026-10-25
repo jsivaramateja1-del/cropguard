@@ -210,13 +210,51 @@ def build_class_index(
 # ---------------------------------------------------------------------------
 # Model factory
 # ---------------------------------------------------------------------------
-def build_model(num_classes: int, pretrained: bool = True, dropout: float = 0.2) -> nn.Module:
-    """MobileNetV3-Large with the ImageNet classifier replaced for ``num_classes``."""
+def build_model(
+    num_classes: int,
+    pretrained: bool = True,
+    dropout: float = 0.2,
+    allow_download: bool = True,
+) -> nn.Module:
+    """MobileNetV3-Large with the ImageNet classifier replaced for ``num_classes``.
+
+    If ``pretrained`` is requested but the weights cannot be fetched (offline
+    notebook, blocked DNS, no cache), the model falls back to random
+    initialisation with a loud warning instead of raising. Training still runs;
+    it simply needs many more epochs to converge, and the caller can tell from
+    the printed warning that the run is not the intended one.
+
+    Pass ``allow_download=False`` to skip the download attempt entirely (useful
+    when you know the environment is offline and do not want to wait for the
+    network timeout).
+    """
     if num_classes < 2:
         raise ValueError("num_classes must be >= 2")
 
-    weights = MobileNet_V3_Large_Weights.IMAGENET1K_V2 if pretrained else None
-    model = mobilenet_v3_large(weights=weights)
+    model = None
+    backbone_pretrained = False
+    if pretrained and allow_download:
+        weights = MobileNet_V3_Large_Weights.IMAGENET1K_V2
+        try:
+            model = mobilenet_v3_large(weights=weights)
+            backbone_pretrained = True
+            print("  backbone     : ImageNet-1K V2 pretrained weights loaded")
+        except Exception as error:  # URLError, gaierror, RuntimeError, HTTP errors...
+            print("  ! could not load ImageNet weights:", f"{type(error).__name__}: {error}")
+            print("  ! falling back to RANDOM initialisation for this run.")
+            print("    Training from scratch needs far more epochs than fine-tuning.")
+            print("    Fix the network (Kaggle: Settings -> Internet -> On), or pre-cache the")
+            print("    weights, then re-run. To silence this attempt use --no-pretrained.")
+            model = None
+
+    if model is None:
+        if pretrained and not allow_download:
+            print("  backbone     : random init (download disabled)")
+        elif not pretrained:
+            print("  backbone     : random init (--no-pretrained)")
+        else:
+            print("  backbone     : random init (pretrained weights unavailable)")
+        model = mobilenet_v3_large(weights=None)
 
     in_features = model.classifier[-1].in_features
     model.classifier[-1] = nn.Linear(in_features, num_classes)
@@ -227,6 +265,10 @@ def build_model(num_classes: int, pretrained: bool = True, dropout: float = 0.2)
         for module in model.classifier.modules():
             if isinstance(module, nn.Dropout):
                 module.p = float(dropout)
+
+    # Reported by the training script so the exported metrics never claim a
+    # pretrained backbone that was not actually used.
+    model.cropguard_pretrained = backbone_pretrained
     return model
 
 
