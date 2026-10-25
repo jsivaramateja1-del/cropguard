@@ -640,3 +640,26 @@ def test_label_mismatch_is_refused(tmp_path):
     message = str(error.value)
     assert "Label mismatch" in message
     assert "4 classes" in message and "3" in message
+
+
+def test_timestamps_carry_utc_offset(client, leaf_jpeg):
+    """A naive SQLite datetime must be serialised as UTC, not as floating local time.
+
+    Without this the browser reads '2026-10-25T18:56:19' as local and shows a report
+    submitted at 18:56 UTC as 18:56 IST — 5.5 hours wrong.
+    """
+    created = _analyze(client, leaf_jpeg).json()["report"]
+    assert created["created_at"].endswith("+00:00"), created["created_at"]
+
+    report = _analyze(client, leaf_jpeg, request_expert_review="true").json()["report"]
+    verified = client.patch(
+        f"/api/reports/{report['id']}/verify",
+        json={"action": "confirm", "expert_name": "Dr Rao"},
+    ).json()
+    assert verified["verified_at"].endswith("+00:00"), verified["verified_at"]
+
+    followup = client.post(
+        f"/api/reports/{report['id']}/followup",
+        data={"condition_status": "Recovering"},
+    ).json()
+    assert followup["created_at"].endswith("+00:00"), followup["created_at"]

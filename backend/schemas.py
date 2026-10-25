@@ -11,15 +11,26 @@ rejected at the edge with a 422 rather than stored and silently un-adviseable.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from advisory import supported_diseases
 from models import CROP_TYPES, FollowUpCondition, ReportStatus, WeatherRiskLevel
 
 CropType = Literal["Tomato", "Rice", "Potato", "Wheat"]
+
+
+def as_utc(value: datetime) -> datetime:
+    """Treat a naive datetime as UTC.
+
+    SQLite has no timezone type, so a column declared ``DateTime(timezone=True)`` comes
+    back naive. Serialising that as-is produces ``2026-10-25T18:56:19``, which a browser
+    reads as *local* time and renders 5.5 hours wrong in IST. Stamping UTC here means the
+    frontend always receives an unambiguous instant.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def _supported_labels() -> List[str]:
@@ -80,6 +91,10 @@ class FollowUpOut(BaseModel):
     followup_image_url: Optional[str] = None
     created_at: datetime
 
+    @field_serializer("created_at")
+    def _serialise_created_at(self, value: datetime) -> str:
+        return as_utc(value).isoformat()
+
 
 # ---------------------------------------------------------------------------
 # Reports
@@ -137,6 +152,10 @@ class ReportSummary(BaseModel):
     status: ReportStatus
     created_at: datetime
 
+    @field_serializer("created_at")
+    def _serialise_created_at(self, value: datetime) -> str:
+        return as_utc(value).isoformat()
+
     @property
     def effective_diagnosis(self) -> str:
         return self.final_diagnosis or self.predicted_disease
@@ -156,6 +175,10 @@ class ReportOut(ReportSummary):
     expert_name: Optional[str] = None
     verified_at: Optional[datetime] = None
     follow_ups: List[FollowUpOut] = Field(default_factory=list)
+
+    @field_serializer("verified_at")
+    def _serialise_verified_at(self, value: Optional[datetime]) -> Optional[str]:
+        return as_utc(value).isoformat() if value is not None else None
 
 
 class ReportListOut(BaseModel):
