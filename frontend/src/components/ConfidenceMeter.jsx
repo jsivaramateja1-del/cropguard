@@ -1,18 +1,19 @@
+import { Progress } from './ui/progress.jsx'
+
 /**
  * Confidence display.
  *
- * The 0.75 marker is drawn on the bar because the number alone is not interpretable:
- * docs/calibration.md shows this model's scores cluster tightly near 0.90, so a farmer
- * needs to see where the value sits relative to the expert-review threshold rather
- * than reading 68% as "68% certain".
+ * The 0.75 marker is drawn on the bar because the number alone misleads: the model's
+ * scores cluster tightly near 0.90 (see docs/calibration.md), so 68% needs to be read
+ * against the expert-review threshold, not as "68% certain".
  */
 const THRESHOLD = 0.75
 
 function tone(confidence) {
-  if (confidence >= 0.9) return { bar: 'bg-leaf-600', text: 'text-leaf-800' }
-  if (confidence >= THRESHOLD) return { bar: 'bg-leaf-500', text: 'text-leaf-800' }
-  if (confidence >= 0.5) return { bar: 'bg-straw-500', text: 'text-soil-800' }
-  return { bar: 'bg-alert-500', text: 'text-alert-600' }
+  if (confidence >= 0.9) return { bar: 'bg-risk-low', text: 'text-risk-low' }
+  if (confidence >= THRESHOLD) return { bar: 'bg-risk-low/80', text: 'text-risk-low' }
+  if (confidence >= 0.5) return { bar: 'bg-risk-moderate', text: 'text-[hsl(38_85%_28%)]' }
+  return { bar: 'bg-risk-critical', text: 'text-risk-critical' }
 }
 
 export default function ConfidenceMeter({ confidence }) {
@@ -22,32 +23,20 @@ export default function ConfidenceMeter({ confidence }) {
 
   return (
     <div>
-      <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-soil-600">
-          Model confidence
-        </span>
-        <span className={`text-sm font-bold ${style.text}`}>{percent}%</span>
-      </div>
-
-      <div
-        className="relative h-2.5 w-full overflow-hidden rounded-full bg-soil-200"
-        role="meter"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
+      <Progress
+        value={percent}
+        barClassName={style.bar}
+        markerAt={THRESHOLD * 100}
         aria-label="Model confidence"
-      >
-        <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${percent}%` }} />
-        <div
-          className="absolute top-0 h-full w-0.5 bg-soil-700"
-          style={{ left: `${THRESHOLD * 100}%` }}
-          title={`Expert review threshold (${THRESHOLD * 100}%)`}
-        />
-      </div>
-
-      <p className="mt-1 text-[11px] text-soil-600">
-        The mark at {THRESHOLD * 100}% is the expert-review threshold. This is a model
-        score, not a probability of being correct.
+        label={{
+          text: 'Model confidence',
+          value: `${percent}%`,
+          className: style.text,
+        }}
+      />
+      <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
+        The mark at {THRESHOLD * 100}% is the expert-review threshold. This is a model score,
+        not a probability of being correct.
       </p>
     </div>
   )

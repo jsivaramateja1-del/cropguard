@@ -1,30 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Camera, ImagePlus, RotateCcw, X } from 'lucide-react'
+import { Button } from './ui/button.jsx'
+import { Alert } from './ui/alert.jsx'
 
 const MAX_BYTES = 8 * 1024 * 1024
 const ACCEPTED = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 
 /**
- * Leaf photo capture.
- *
- * Two inputs, both native: `capture="environment"` opens the rear camera directly on
- * Android Chrome and iOS Safari, which is more reliable across the browsers a farmer
- * actually has than getUserMedia plus a custom preview. The gallery input has no
- * capture attribute so it opens the photo picker instead.
+ * Leaf capture. Two native inputs: `capture="environment"` opens the rear camera
+ * directly on Android Chrome and iOS Safari, which is more reliable across the browsers
+ * a farmer actually has than getUserMedia plus a custom preview. The second input has
+ * no capture attribute, so it opens the photo picker instead.
  */
 export default function ImagePicker({ file, previewUrl, onSelect, onClear, disabled }) {
   const cameraRef = useRef(null)
   const galleryRef = useRef(null)
   const [error, setError] = useState(null)
 
-  useEffect(() => () => setError(null), [])
-
   function handleFiles(event) {
     const chosen = event.target.files?.[0]
-    // Reset so choosing the same file twice still fires onChange.
-    event.target.value = ''
+    event.target.value = '' // so choosing the same file twice still fires
     if (!chosen) return
-
     if (!ACCEPTED.includes(chosen.type)) {
       setError('That file is not a JPEG, PNG or WebP image.')
       return
@@ -39,7 +35,7 @@ export default function ImagePicker({ file, previewUrl, onSelect, onClear, disab
 
   return (
     <div className="space-y-2">
-      <span className="field-label">Leaf photo</span>
+      <span className="block text-sm font-semibold text-foreground">Leaf photo</span>
 
       <input
         ref={cameraRef}
@@ -63,68 +59,64 @@ export default function ImagePicker({ file, previewUrl, onSelect, onClear, disab
 
       {!previewUrl ? (
         <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => cameraRef.current?.click()}
-            disabled={disabled}
-          >
-            <Camera size={18} aria-hidden="true" />
+          <Button type="button" onClick={() => cameraRef.current?.click()} disabled={disabled}>
+            <Camera size={17} aria-hidden="true" />
             Take photo
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn-secondary"
+            variant="secondary"
             onClick={() => galleryRef.current?.click()}
             disabled={disabled}
           >
-            <ImagePlus size={18} aria-hidden="true" />
+            <ImagePlus size={17} aria-hidden="true" />
             From gallery
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
           <img
             src={previewUrl}
             alt="Selected leaf"
-            className="max-h-72 w-full bg-soil-100 object-contain"
+            className="max-h-72 w-full bg-muted object-contain"
           />
-          <div className="flex items-center justify-between gap-2 border-t border-soil-200 px-3 py-2">
-            <span className="truncate text-xs text-soil-600">
+          <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+            <span className="truncate text-2xs text-muted-foreground">
               {file?.name} · {(file?.size / 1024).toFixed(0)} KB
             </span>
             <div className="flex shrink-0 gap-1">
-              <button
+              <Button
                 type="button"
-                className="btn-ghost px-2 py-1 text-sm"
+                variant="ghost"
+                size="sm"
                 onClick={() => cameraRef.current?.click()}
                 disabled={disabled}
               >
-                <RotateCcw size={15} aria-hidden="true" />
+                <RotateCcw size={14} aria-hidden="true" />
                 Retake
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn-ghost px-2 py-1 text-sm text-alert-600 hover:bg-red-50"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:bg-destructive/10"
                 onClick={onClear}
                 disabled={disabled}
               >
-                <X size={15} aria-hidden="true" />
+                <X size={14} aria-hidden="true" />
                 Remove
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {error ? (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-alert-600">
-          {error}
-        </p>
+        <Alert variant="destructive">{error}</Alert>
       ) : (
-        <p className="field-hint">
-          Fill the frame with a single affected leaf. Avoid shadow, glare and blurry
-          shots — they are the most common cause of a low-confidence result.
+        <p className="text-2xs leading-relaxed text-muted-foreground">
+          Fill the frame with one affected leaf. Avoid shadow, glare and blur — they are the
+          most common cause of a low-confidence result.
         </p>
       )}
     </div>

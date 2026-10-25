@@ -70,6 +70,9 @@ jobs:
       - name: Check error handling
         run: npm run test:errors
 
+      - name: Render smoke test
+        run: npm run test:render
+
       - name: Production build
         run: npm run build
 

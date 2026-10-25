@@ -3,66 +3,82 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // Design tokens live in index.css as HSL triplets, shadcn/ui style, so a theme
+      // change is a CSS edit rather than a find-and-replace across components.
       colors: {
-        // Agricultural palette: soil, leaf, straw. Restrained on purpose — this is a
-        // field tool, not a dashboard demo. Contrast checked against the cream
-        // background for body text (ink) and against white for the leaf shades.
-        leaf: {
-          50: '#f2f7f2',
-          100: '#dfeade',
-          200: '#c0d6bf',
-          300: '#94b894',
-          400: '#679768',
-          500: '#4a7c4b',
-          600: '#386239',
-          700: '#2d4e2f',
-          800: '#253f27',
-          900: '#1e3420',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
         },
-        soil: {
-          50: '#faf7f2',
-          100: '#f0e9dd',
-          200: '#e0d2ba',
-          300: '#c9b291',
-          400: '#b0936b',
-          500: '#967a52',
-          600: '#7d6444',
-          700: '#655039',
-          800: '#544333',
-          900: '#47392d',
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
         },
-        straw: {
-          400: '#e3b23c',
-          500: '#d29b1f',
-          600: '#b07f14',
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
         },
-        alert: {
-          500: '#c0392b',
-          600: '#a32f23',
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
         },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        // Risk scale, used consistently for severity everywhere.
+        risk: {
+          low: 'hsl(var(--risk-low))',
+          moderate: 'hsl(var(--risk-moderate))',
+          high: 'hsl(var(--risk-high))',
+          critical: 'hsl(var(--risk-critical))',
+        },
+      },
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: [
-          'system-ui',
-          '-apple-system',
-          'Segoe UI',
-          'Roboto',
-          'Noto Sans',
-          'Helvetica Neue',
-          'Arial',
-          'sans-serif',
-        ],
+        sans: ['Inter Variable', 'Inter', 'system-ui', 'sans-serif'],
       },
       fontSize: {
-        // Larger base sizes than a typical web app: this is read on a phone in daylight.
-        base: ['1rem', { lineHeight: '1.6' }],
-        lg: ['1.125rem', { lineHeight: '1.6' }],
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
       },
       minHeight: {
-        touch: '3rem',
+        touch: '2.75rem',
       },
       boxShadow: {
-        card: '0 1px 2px rgba(30, 52, 32, 0.06), 0 4px 12px rgba(30, 52, 32, 0.05)',
+        card: '0 1px 2px hsl(var(--foreground) / 0.04), 0 2px 8px hsl(var(--foreground) / 0.04)',
+        raised: '0 2px 4px hsl(var(--foreground) / 0.05), 0 8px 24px hsl(var(--foreground) / 0.07)',
+      },
+      keyframes: {
+        'accordion-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
+        },
+        'accordion-up': {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
+        },
+        'fade-in': {
+          from: { opacity: '0', transform: 'translateY(4px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        'accordion-down': 'accordion-down 180ms ease-out',
+        'accordion-up': 'accordion-up 180ms ease-out',
+        'fade-in': 'fade-in 200ms ease-out',
       },
     },
   },

@@ -9,14 +9,23 @@
     "build": "vite build",
     "preview": "vite preview --port 4173",
     "test:errors": "node scripts/check-api-errors.mjs",
-    "check": "node scripts/check-api-errors.mjs && vite build"
+    "check": "npm run test:errors && npm run test:render && vite build",
+    "test:render": "esbuild scripts/render-check.jsx --bundle --platform=node --format=cjs --jsx=automatic --loader:.jsx=jsx --outfile=node_modules/.cache/render-check.cjs --log-level=error && node node_modules/.cache/render-check.cjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.1.1",
+    "@radix-ui/react-accordion": "^1.2.2",
+    "@radix-ui/react-checkbox": "^1.1.3",
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-slot": "^1.1.1",
     "axios": "^1.7.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.1"
+    "react-router-dom": "^6.28.1",
+    "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",

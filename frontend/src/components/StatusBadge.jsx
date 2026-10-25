@@ -1,48 +1,48 @@
 import { CheckCircle2, ClipboardCheck, PencilLine, UserCheck } from 'lucide-react'
+import { Badge } from './ui/badge.jsx'
 
 const STYLES = {
   AI_Verified: {
     label: 'AI verified',
     hint: 'Confident enough to act on, but still a screening result.',
-    className: 'bg-leaf-100 text-leaf-800',
+    variant: 'low',
     Icon: CheckCircle2,
   },
   Pending_Expert_Review: {
     label: 'Expert review pending',
-    hint: 'This report has been sent to an agricultural expert for confirmation.',
-    className: 'bg-amber-100 text-soil-800',
+    hint: 'Sent to an agricultural expert for confirmation.',
+    variant: 'moderate',
     Icon: ClipboardCheck,
   },
   Expert_Confirmed: {
     label: 'Expert confirmed',
     hint: 'An agricultural expert confirmed this diagnosis.',
-    className: 'bg-leaf-700 text-white',
+    variant: 'default',
     Icon: UserCheck,
   },
   Expert_Corrected: {
     label: 'Expert corrected',
     hint: 'An expert reviewed this report and changed the diagnosis.',
-    className: 'bg-soil-700 text-white',
+    variant: 'secondary',
     Icon: PencilLine,
   },
 }
 
 export default function StatusBadge({ status, showHint = false }) {
-  const style = STYLES[status] || {
-    label: status || 'Unknown',
-    hint: '',
-    className: 'bg-soil-200 text-soil-800',
-    Icon: ClipboardCheck,
-  }
+  const style =
+    STYLES[status] ||
+    { label: status || 'Unknown', hint: '', variant: 'muted', Icon: ClipboardCheck }
   const { Icon } = style
 
   return (
     <div className="flex flex-col gap-1">
-      <span className={`chip ${style.className}`}>
+      <Badge variant={style.variant} className="w-fit px-2.5 py-1 text-2xs">
         <Icon size={13} aria-hidden="true" />
         {style.label}
-      </span>
-      {showHint && style.hint && <span className="text-xs text-soil-600">{style.hint}</span>}
+      </Badge>
+      {showHint && style.hint ? (
+        <span className="text-2xs leading-relaxed text-muted-foreground">{style.hint}</span>
+      ) : null}
     </div>
   )
 }

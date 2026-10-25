@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
-  ArrowRight,
+  Check,
   ClipboardList,
+  Copy,
   Loader2,
   RotateCcw,
   ScanLine,
@@ -16,11 +17,28 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 import AdvisoryPanel from '../components/AdvisoryPanel.jsx'
 import WeatherRiskCard from '../components/WeatherRiskCard.jsx'
+import { Button } from '../components/ui/button.jsx'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card.jsx'
+import { Input } from '../components/ui/input.jsx'
+import { Label } from '../components/ui/label.jsx'
+import { Checkbox } from '../components/ui/checkbox.jsx'
+import { Alert } from '../components/ui/alert.jsx'
+import { Badge } from '../components/ui/badge.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog.jsx'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '../components/ui/accordion.jsx'
 
-const dateFormatter = new Intl.DateTimeFormat('en-IN', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
+const dateFormatter = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
 
 function formatWhen(iso) {
   if (!iso) return ''
@@ -33,7 +51,7 @@ function splitLabel(label = '') {
   return { crop, condition: (condition || '').replace(/_/g, ' ') }
 }
 
-/** A quiet banner shown when the backend is reachable but not fully healthy. */
+/** A quiet banner when the backend is reachable but not fully healthy, or not reachable. */
 function HealthBanner() {
   const [problem, setProblem] = useState(null)
 
@@ -41,21 +59,16 @@ function HealthBanner() {
     let cancelled = false
     fetchHealth()
       .then((health) => {
-        if (cancelled) return
-        if (health.status === 'ok') return
+        if (cancelled || health.status === 'ok') return
         const modelProblem = health.model && health.model.available === false
         setProblem(
           modelProblem
-            ? `The diagnosis model is not loaded on the server${
-                health.model.error ? `: ${health.model.error}` : '.'
-              }`
+            ? `The diagnosis model is not loaded on the server${health.model.error ? `: ${health.model.error}` : '.'}`
             : 'The server reports a degraded state. Some features may not work.',
         )
       })
       .catch(() => {
-        if (cancelled) return
-        // A bare "network error" hides the two causes that look identical in a browser.
-        setProblem(diagnoseConnectionFailure().message)
+        if (!cancelled) setProblem(diagnoseConnectionFailure().message)
       })
     return () => {
       cancelled = true
@@ -64,13 +77,60 @@ function HealthBanner() {
 
   if (!problem) return null
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-soil-800">
-      <AlertTriangle size={15} className="mt-0.5 shrink-0 text-straw-600" aria-hidden="true" />
+    <Alert variant="warning" className="mb-4">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div>
         <p className="font-semibold">Service notice</p>
         <p>{problem}</p>
       </div>
-    </div>
+    </Alert>
+  )
+}
+
+function ReportNumberDialog({ reportId }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(String(reportId))
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <Dialog onOpenChange={() => setCopied(false)}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" className="flex-1">
+          <ClipboardList size={16} aria-hidden="true" />
+          Save report number
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogTitle>Your report number</DialogTitle>
+        <DialogDescription>
+          Write this down. You will need it to look the report up later and to add follow-up
+          observations on how the crop is recovering.
+        </DialogDescription>
+
+        <div className="my-4 flex items-center justify-center rounded-lg border border-border bg-muted py-4">
+          <span className="tabular text-3xl font-bold tracking-tight text-foreground">
+            #{reportId}
+          </span>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={copy}>
+            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copied ? 'Copied' : 'Copy number'}
+          </Button>
+          <Button asChild className="flex-1">
+            <a href={`#report-${reportId}`}>Done</a>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -83,20 +143,16 @@ export default function DiagnosePage() {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [askExpert, setAskExpert] = useState(false)
 
-  const [phase, setPhase] = useState('idle') // idle | uploading | analysing | done
+  const [phase, setPhase] = useState('idle') // idle | uploading | analysing
   const [uploadPercent, setUploadPercent] = useState(0)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
-  // Shown when the form is incomplete. The button used to be disabled in that case,
-  // so a tap did nothing and explained nothing — the worst kind of dead end.
   const [notice, setNotice] = useState(null)
 
   const previewRef = useRef(null)
 
-  useEffect(() => {
-    return () => {
-      if (previewRef.current) URL.revokeObjectURL(previewRef.current)
-    }
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current)
   }, [])
 
   const handleSelect = useCallback((chosen) => {
@@ -106,6 +162,7 @@ export default function DiagnosePage() {
     setPreviewUrl(url)
     setFile(chosen)
     setError(null)
+    setNotice(null)
   }, [])
 
   const handleClear = useCallback(() => {
@@ -115,20 +172,25 @@ export default function DiagnosePage() {
     setFile(null)
   }, [])
 
-  const hasCoords = location?.latitude != null && location?.longitude != null
-  const canSubmit =
-    Boolean(file) && Boolean(crop) && farmerName.trim().length >= 2 && hasCoords && phase === 'idle'
+  const hasCoords =
+    location?.latitude != null &&
+    location?.longitude != null &&
+    Number.isFinite(location.latitude) &&
+    Number.isFinite(location.longitude)
+
+  const busy = phase === 'uploading' || phase === 'analysing'
+  const canSubmit = Boolean(file) && farmerName.trim().length >= 2 && hasCoords
 
   const missing = useMemo(() => {
     const gaps = []
     if (!file) gaps.push('a leaf photo')
     if (farmerName.trim().length < 2) gaps.push('your name')
-    if (!hasCoords) gaps.push('a location')
+    if (!hasCoords) gaps.push('your location')
     return gaps
   }, [file, farmerName, hasCoords])
 
   async function handleSubmit(event) {
-    event.preventDefault()
+    event?.preventDefault()
     if (busy) return
 
     if (!canSubmit) {
@@ -141,7 +203,6 @@ export default function DiagnosePage() {
     }
 
     setNotice(null)
-
     setError(null)
     setResult(null)
     setPhase('uploading')
@@ -164,7 +225,7 @@ export default function DiagnosePage() {
         },
       })
       setResult(response)
-      setPhase('done')
+      setPhase('idle')
     } catch (submitError) {
       setError(submitError)
       setPhase('idle')
@@ -174,250 +235,266 @@ export default function DiagnosePage() {
   function reset() {
     setResult(null)
     setError(null)
+    setNotice(null)
     setPhase('idle')
     handleClear()
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const busy = phase === 'uploading' || phase === 'analysing'
   const report = result?.report
   const diagnosis = report ? splitLabel(report.final_diagnosis || report.predicted_disease) : null
 
+  const submitLabel = busy
+    ? phase === 'uploading'
+      ? `Uploading… ${uploadPercent}%`
+      : 'Analysing…'
+    : 'Analyse leaf'
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <HealthBanner />
 
-      {!result && (
-        <header className="space-y-1">
-          <h1 className="text-xl font-bold">Check a leaf</h1>
-          <p className="text-sm leading-relaxed text-soil-700">
-            Photograph one affected leaf, tell us the crop, and CropGuard will screen it
-            and suggest what to do next.
-          </p>
-        </header>
-      )}
+      {!result ? (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Check a leaf</CardTitle>
+              <CardDescription className="text-sm leading-relaxed text-secondary-foreground">
+                Photograph one affected leaf, tell us the crop, and CropGuard will screen it and
+                suggest what to do next.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <CropPicker value={crop} onChange={setCrop} disabled={busy} />
+              <ImagePicker
+                file={file}
+                previewUrl={previewUrl}
+                onSelect={handleSelect}
+                onClear={handleClear}
+                disabled={busy}
+              />
+            </CardContent>
+          </Card>
 
-      {!result && (
-        <form onSubmit={handleSubmit} className="card space-y-5 p-4">
-          <CropPicker value={crop} onChange={setCrop} disabled={busy} />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">About this field</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="farmer-name">Your name</Label>
+                <Input
+                  id="farmer-name"
+                  value={farmerName}
+                  onChange={(event) => setFarmerName(event.target.value)}
+                  placeholder="So the expert can address you"
+                  maxLength={120}
+                  autoComplete="name"
+                  disabled={busy}
+                />
+              </div>
 
-          <ImagePicker
-            file={file}
-            previewUrl={previewUrl}
-            onSelect={handleSelect}
-            onClear={handleClear}
-            disabled={busy}
-          />
+              <LocationField value={location} onChange={setLocation} disabled={busy} />
 
-          <div>
-            <label className="field-label" htmlFor="farmer-name">
-              Your name
-            </label>
-            <input
-              id="farmer-name"
-              className="input"
-              value={farmerName}
-              onChange={(event) => setFarmerName(event.target.value)}
-              placeholder="So the expert can address you"
-              maxLength={120}
-              autoComplete="name"
-              disabled={busy}
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="region" hint="optional">
+                  Village or district
+                </Label>
+                <Input
+                  id="region"
+                  value={regionName}
+                  onChange={(event) => setRegionName(event.target.value)}
+                  placeholder="e.g. Vijayawada, Andhra Pradesh"
+                  maxLength={160}
+                  disabled={busy}
+                />
+              </div>
 
-          <LocationField value={location} onChange={setLocation} disabled={busy} />
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-muted px-3 py-2.5">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={askExpert}
+                  onCheckedChange={(checked) => setAskExpert(checked === true)}
+                  disabled={busy}
+                  id="ask-expert"
+                />
+                <span className="text-xs leading-relaxed text-secondary-foreground">
+                  <strong className="font-semibold text-foreground">
+                    Ask an expert to review this.
+                  </strong>{' '}
+                  Recommended if you are unsure, the damage is spreading, or the plant is a
+                  significant part of your income.
+                </span>
+              </label>
+            </CardContent>
+          </Card>
 
-          <div>
-            <label className="field-label" htmlFor="region">
-              Village or district <span className="font-normal text-soil-500">(optional)</span>
-            </label>
-            <input
-              id="region"
-              className="input"
-              value={regionName}
-              onChange={(event) => setRegionName(event.target.value)}
-              placeholder="e.g. Vijayawada, Andhra Pradesh"
-              maxLength={160}
-              disabled={busy}
-            />
-          </div>
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-semibold">
+                  {error.status === 503 ? 'Diagnosis service unavailable' : 'Could not analyse the photo'}
+                </p>
+                <p className="mt-0.5">{error.message}</p>
+              </div>
+            </Alert>
+          ) : null}
 
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-soil-50 px-3 py-2.5">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-soil-400 text-leaf-700 focus:ring-leaf-600"
-              checked={askExpert}
-              onChange={(event) => setAskExpert(event.target.checked)}
-              disabled={busy}
-            />
-            <span className="text-xs leading-relaxed text-soil-700">
-              <strong className="font-semibold text-soil-800">Ask an expert to review this.</strong>{' '}
-              Recommended if you are unsure, the damage is spreading, or the plant is a
-              significant part of your income.
-            </span>
-          </label>
+          {notice ? <Alert variant="warning">{notice}</Alert> : null}
 
-          {error && (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-alert-600">
-                <AlertTriangle size={15} aria-hidden="true" />
-                {error.status === 503 ? 'Diagnosis service unavailable' : 'Could not analyse the photo'}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-soil-700">{error.message}</p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {notice && (
-              <p
-                role="alert"
-                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-soil-800"
-              >
-                {notice}
-              </p>
-            )}
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
+          {/* Desktop action */}
+          <div className="hidden sm:block">
+            <Button type="submit" size="lg" className="w-full" disabled={busy}>
               {busy ? (
                 <Loader2 size={18} className="animate-spin" aria-hidden="true" />
               ) : (
                 <ScanLine size={18} aria-hidden="true" />
               )}
-              {phase === 'uploading'
-                ? `Uploading photo… ${uploadPercent}%`
-                : phase === 'analysing'
-                  ? 'Analysing leaf…'
-                  : 'Analyse leaf'}
-            </button>
-            {missing.length > 0 && !busy && (
-              <p className="text-center text-xs text-soil-600">
+              {submitLabel}
+            </Button>
+            {missing.length > 0 && !busy ? (
+              <p className="mt-2 text-center text-2xs text-muted-foreground">
                 Still needed: {missing.join(', ')}.
               </p>
-            )}
-            {busy && (
-              <p className="text-center text-xs text-soil-600">
-                This can take a few seconds on a slow connection.
-              </p>
-            )}
+            ) : null}
+          </div>
+
+          {/* Mobile action: a fixed bar, because one hand is usually holding the phone */}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
+            <Button type="submit" size="lg" className="w-full" disabled={busy}>
+              {busy ? (
+                <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <ScanLine size={18} aria-hidden="true" />
+              )}
+              {submitLabel}
+            </Button>
           </div>
         </form>
-      )}
-
-      {result && (
+      ) : (
         <div className="space-y-4">
-          <section className="card space-y-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="section-title">Potential diagnosis</p>
-                <h1 className="mt-0.5 text-lg font-bold leading-snug">
-                  {diagnosis.condition}
-                </h1>
-                <p className="text-sm text-soil-700">{diagnosis.crop}</p>
+          <Card className="animate-fade-in">
+            <CardContent className="space-y-3.5 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-2xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                    Potential diagnosis
+                  </p>
+                  <h1 className="mt-0.5 text-xl font-bold leading-tight">{diagnosis.condition}</h1>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{diagnosis.crop}</p>
+                </div>
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt="Analysed leaf"
+                    className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
+                  />
+                ) : null}
               </div>
-              {previewUrl && (
-                <img
-                  src={previewUrl}
-                  alt="Analysed leaf"
-                  className="h-16 w-16 shrink-0 rounded-lg border border-soil-200 object-cover"
-                />
-              )}
-            </div>
 
-            <StatusBadge status={report.status} showHint />
+              <StatusBadge status={report.status} showHint />
 
-            <ConfidenceMeter confidence={report.confidence} />
+              <ConfidenceMeter confidence={report.confidence} />
 
-            {result.review_required && result.review_reasons?.length > 0 && (
-              <div className="rounded-lg bg-amber-50 px-3 py-2">
-                <p className="mb-1 text-xs font-semibold text-soil-800">
-                  Why this needs a human
+              {result.review_required && result.review_reasons?.length > 0 ? (
+                <div className="rounded-lg bg-accent/10 px-3 py-2.5">
+                  <p className="mb-1 text-2xs font-bold uppercase tracking-wide text-accent-foreground">
+                    Why this needs a human
+                  </p>
+                  <ul className="space-y-1">
+                    {result.review_reasons.map((reason, index) => (
+                      <li key={index} className="text-xs leading-relaxed text-accent-foreground">
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {report.final_diagnosis && report.final_diagnosis !== report.predicted_disease ? (
+                <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-secondary-foreground">
+                  An expert changed this diagnosis. The AI had suggested{' '}
+                  <strong className="font-semibold">
+                    {splitLabel(report.predicted_disease).condition}
+                  </strong>{' '}
+                  at {(report.confidence * 100).toFixed(0)}% confidence.
                 </p>
-                <ul className="space-y-1">
-                  {result.review_reasons.map((reason, index) => (
-                    <li key={index} className="text-xs leading-relaxed text-soil-700">
-                      {reason}
-                    </li>
-                  ))}
-                </ul>
+              ) : null}
+
+              {report.top_predictions?.length > 1 ? (
+                <Accordion type="single" collapsible className="border-t border-border pt-1">
+                  <AccordionItem value="others" className="border-0">
+                    <AccordionTrigger className="py-2 text-xs font-semibold text-primary">
+                      Other possibilities the model considered
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="space-y-1">
+                        {report.top_predictions.slice(1).map((item) => (
+                          <li key={item.label} className="flex justify-between gap-2 text-xs">
+                            <span className="text-muted-foreground">
+                              {splitLabel(item.label).condition}
+                            </span>
+                            <span className="tabular font-medium text-foreground">
+                              {(item.probability * 100).toFixed(1)}%
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2.5 text-2xs text-muted-foreground">
+                <Badge variant="muted" className="tabular">
+                  Report #{report.id}
+                </Badge>
+                <span>{formatWhen(report.created_at)}</span>
+                <span aria-hidden="true">·</span>
+                <span className="tabular">
+                  {String(result.model?.backend || '').toUpperCase()} · {result.model?.inference_ms} ms
+                </span>
               </div>
-            )}
-
-            {report.final_diagnosis && report.final_diagnosis !== report.predicted_disease && (
-              <p className="rounded-lg bg-soil-100 px-3 py-2 text-xs leading-relaxed text-soil-700">
-                An expert changed this diagnosis. The AI had suggested{' '}
-                <strong className="font-semibold">
-                  {splitLabel(report.predicted_disease).condition}
-                </strong>{' '}
-                at {(report.confidence * 100).toFixed(0)}% confidence.
-              </p>
-            )}
-
-            {result.report.top_predictions?.length > 1 && (
-              <details className="text-xs">
-                <summary className="cursor-pointer font-semibold text-leaf-700">
-                  Other possibilities the model considered
-                </summary>
-                <ul className="mt-2 space-y-1">
-                  {result.report.top_predictions.slice(1).map((item) => (
-                    <li key={item.label} className="flex justify-between gap-2 text-soil-700">
-                      <span>{splitLabel(item.label).condition}</span>
-                      <span className="font-medium">{(item.probability * 100).toFixed(1)}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            <p className="border-t border-soil-200 pt-2 text-[11px] leading-relaxed text-soil-500">
-              Report #{report.id} · {formatWhen(report.created_at)} ·{' '}
-              {result.model?.backend === 'onnx' ? 'ONNX' : result.model?.backend} ·{' '}
-              {result.model?.inference_ms} ms
-            </p>
-          </section>
+            </CardContent>
+          </Card>
 
           <AdvisoryPanel advisory={result.advisory} />
 
           <WeatherRiskCard weather={result.weather} risk={result.risk} />
 
-          {result.warnings?.length > 0 && (
-            <section className="rounded-lg border border-soil-200 bg-white px-3 py-2.5">
-              <p className="mb-1 text-xs font-semibold text-soil-700">Notes</p>
-              <ul className="space-y-1">
-                {result.warnings.map((warning, index) => (
-                  <li key={index} className="text-[11px] leading-relaxed text-soil-600">
-                    {warning}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          {result.warnings?.length > 0 ? (
+            <Card>
+              <CardContent className="p-3.5">
+                <p className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Notes
+                </p>
+                <ul className="space-y-1">
+                  {result.warnings.map((warning, index) => (
+                    <li key={index} className="text-2xs leading-relaxed text-muted-foreground">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
 
-          <div className="rounded-lg border border-soil-200 bg-white px-3 py-2.5">
-            <p className="flex items-start gap-2 text-[11px] leading-relaxed text-soil-600">
-              <Stethoscope size={14} className="mt-0.5 shrink-0 text-soil-500" aria-hidden="true" />
-              <span>{result.disclaimer}</span>
-            </p>
-          </div>
+          <Card>
+            <CardContent className="p-3.5">
+              <p className="flex items-start gap-2 text-2xs leading-relaxed text-muted-foreground">
+                <Stethoscope size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{result.disclaimer}</span>
+              </p>
+            </CardContent>
+          </Card>
 
           <div className="flex flex-col gap-2 sm:flex-row">
-            <button type="button" className="btn-secondary flex-1" onClick={reset}>
-              <RotateCcw size={17} aria-hidden="true" />
+            <Button variant="secondary" className="flex-1" onClick={reset}>
+              <RotateCcw size={16} aria-hidden="true" />
               Check another leaf
-            </button>
-            <a
-              className="btn-secondary flex-1"
-              href={`#report-${report.id}`}
-              onClick={(event) => {
-                event.preventDefault()
-                navigator.clipboard
-                  ?.writeText(String(report.id))
-                  .then(() => alert(`Report number ${report.id} copied. Use it to look the report up later.`))
-                  .catch(() => alert(`Your report number is ${report.id}.`))
-              }}
-            >
-              <ClipboardList size={17} aria-hidden="true" />
-              Save report number
-              <ArrowRight size={15} aria-hidden="true" />
-            </a>
+            </Button>
+            <ReportNumberDialog reportId={report.id} />
           </div>
         </div>
       )}

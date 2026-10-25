@@ -1,135 +1,167 @@
-import { useState } from 'react'
-import { ChevronDown, FlaskConical, Leaf, ShieldCheck, Sprout, TriangleAlert } from 'lucide-react'
+import { FlaskConical, Leaf, ShieldCheck, Sprout, TriangleAlert } from 'lucide-react'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from './ui/accordion.jsx'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card.jsx'
+import { Badge } from './ui/badge.jsx'
 
-function Section({ title, Icon, items, tone = 'default' }) {
+function Bullets({ items }) {
   if (!items?.length) return null
   return (
-    <div>
-      <h4 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-leaf-900">
-        <Icon size={15} className={tone === 'warn' ? 'text-straw-600' : 'text-leaf-600'} aria-hidden="true" />
-        {title}
-      </h4>
-      <ul className="space-y-1.5 pl-0.5">
-        {items.map((item, index) => (
-          <li key={index} className="flex gap-2 text-sm leading-relaxed text-soil-800">
-            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-soil-400" aria-hidden="true" />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="space-y-1.5">
+      {items.map((item, index) => (
+        <li key={index} className="flex gap-2 text-sm leading-relaxed text-secondary-foreground">
+          <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-border" aria-hidden="true" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
 /**
  * Advisory rendering.
  *
- * The chemical section is collapsed by default and never presents a dose. That is
- * deliberate: the knowledge base deliberately carries active-ingredient groups and
- * safety warnings only, and the product must not imply a prescription.
+ * Sections are accordions, not tabs: a field study of crop-scouting tools found farmers
+ * did not notice scrollable tabs and the interface was rebuilt around vertical scrolling
+ * with expandable cards. Chemical guidance is collapsed by default and never carries a
+ * dose — the knowledge base deliberately holds active-ingredient groups only.
  */
 export default function AdvisoryPanel({ advisory }) {
-  const [showChemical, setShowChemical] = useState(false)
   if (!advisory) return null
 
   const chemical = advisory.chemical_management || {}
   const groups = chemical.active_ingredient_groups || []
+  const hasChemical = chemical.recommended && groups.length > 0
 
   return (
-    <section className="card space-y-4 p-4">
-      <header className="space-y-1">
-        <h3 className="text-base font-bold">
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
           {advisory.crop} · {advisory.condition}
-        </h3>
-        <p className="text-sm leading-relaxed text-soil-700">{advisory.summary}</p>
-      </header>
+        </CardTitle>
+        <CardDescription className="text-sm leading-relaxed text-secondary-foreground">
+          {advisory.summary}
+        </CardDescription>
+      </CardHeader>
 
-      {advisory.is_healthy ? (
-        <p className="rounded-lg bg-leaf-50 px-3 py-2 text-sm text-leaf-800">
-          No disease was detected. Keep scouting — this result is a useful baseline.
-        </p>
-      ) : (
-        <Section title="What to look for" Icon={Leaf} items={advisory.symptoms} />
-      )}
+      <CardContent className="space-y-3">
+        {advisory.is_healthy ? (
+          <div className="rounded-lg bg-primary/5 px-3 py-2.5 text-sm leading-relaxed text-primary">
+            No disease was detected. Keep scouting — this result is a useful baseline.
+          </div>
+        ) : null}
 
-      <Section title="Cultural control" Icon={Sprout} items={advisory.cultural_control} />
-      <Section title="Organic / low-risk management" Icon={ShieldCheck} items={advisory.organic_management} />
+        <Accordion type="multiple" defaultValue={['cultural']} className="w-full">
+          {advisory.symptoms?.length ? (
+            <AccordionItem value="symptoms">
+              <AccordionTrigger>
+                <Leaf size={15} className="text-muted-foreground" aria-hidden="true" />
+                What to look for
+              </AccordionTrigger>
+              <AccordionContent>
+                <Bullets items={advisory.symptoms} />
+              </AccordionContent>
+            </AccordionItem>
+          ) : null}
 
-      {advisory.monitoring && (
-        <p className="rounded-lg bg-soil-100 px-3 py-2 text-xs leading-relaxed text-soil-700">
-          <strong className="font-semibold">Monitoring: </strong>
-          {advisory.monitoring}
-        </p>
-      )}
+          <AccordionItem value="cultural">
+            <AccordionTrigger>
+              <Sprout size={15} className="text-primary" aria-hidden="true" />
+              Cultural control
+            </AccordionTrigger>
+            <AccordionContent>
+              <Bullets items={advisory.cultural_control} />
+            </AccordionContent>
+          </AccordionItem>
 
-      {chemical.recommended && groups.length > 0 && (
-        <div className="rounded-lg border border-soil-200">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-            onClick={() => setShowChemical((open) => !open)}
-            aria-expanded={showChemical}
-          >
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-leaf-900">
-              <FlaskConical size={15} className="text-straw-600" aria-hidden="true" />
-              Chemical management
-            </span>
-            <ChevronDown
-              size={16}
-              className={`text-soil-500 transition-transform ${showChemical ? 'rotate-180' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
+          <AccordionItem value="organic">
+            <AccordionTrigger>
+              <ShieldCheck size={15} className="text-primary" aria-hidden="true" />
+              Organic / low-risk management
+            </AccordionTrigger>
+            <AccordionContent>
+              <Bullets items={advisory.organic_management} />
+            </AccordionContent>
+          </AccordionItem>
 
-          {showChemical && (
-            <div className="space-y-3 border-t border-soil-200 px-3 py-3">
-              <div>
-                <p className="section-title mb-1">Active-ingredient groups</p>
-                <ul className="space-y-1">
-                  {groups.map((group, index) => (
-                    <li key={index} className="text-sm text-soil-800">
-                      {group}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {chemical.notes && (
-                <p className="text-xs leading-relaxed text-soil-700">{chemical.notes}</p>
-              )}
-
-              {chemical.safety?.length > 0 && (
-                <div className="rounded-lg bg-amber-50 px-3 py-2">
-                  <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-soil-700">
-                    <TriangleAlert size={12} className="text-straw-600" aria-hidden="true" />
-                    Safety
+          {hasChemical ? (
+            <AccordionItem value="chemical">
+              <AccordionTrigger
+                badge={
+                  <Badge variant="accent" className="text-2xs">
+                    Last resort
+                  </Badge>
+                }
+              >
+                <FlaskConical size={15} className="text-accent" aria-hidden="true" />
+                Chemical management
+              </AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <div>
+                  <p className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Active-ingredient groups
                   </p>
                   <ul className="space-y-1">
-                    {chemical.safety.map((item, index) => (
-                      <li key={index} className="text-xs leading-relaxed text-soil-800">
-                        {item}
+                    {groups.map((group, index) => (
+                      <li key={index} className="text-sm text-secondary-foreground">
+                        {group}
                       </li>
                     ))}
                   </ul>
                 </div>
-              )}
 
-              <p className="text-[11px] leading-relaxed text-soil-600">
-                No dosage is given here on purpose. Follow the product label exactly,
-                check that the product is registered for your crop and target, and ask
-                your local agricultural officer before applying anything.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+                {chemical.notes ? (
+                  <p className="text-xs leading-relaxed text-muted-foreground">{chemical.notes}</p>
+                ) : null}
 
-      {!chemical.recommended && chemical.notes && (
-        <p className="rounded-lg bg-soil-100 px-3 py-2 text-xs leading-relaxed text-soil-700">
-          <strong className="font-semibold">No chemical control advised. </strong>
-          {chemical.notes}
-        </p>
-      )}
-    </section>
+                {chemical.safety?.length ? (
+                  <div className="rounded-lg bg-accent/10 px-3 py-2.5">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-accent-foreground">
+                      <TriangleAlert size={12} aria-hidden="true" />
+                      Safety
+                    </p>
+                    <ul className="space-y-1">
+                      {chemical.safety.map((item, index) => (
+                        <li key={index} className="text-xs leading-relaxed text-accent-foreground">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <p className="text-2xs leading-relaxed text-muted-foreground">
+                  No dosage is given here on purpose. Follow the product label exactly, check
+                  that the product is registered for your crop and target, and ask your local
+                  agricultural officer before applying anything.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+          ) : null}
+
+          {advisory.monitoring ? (
+            <AccordionItem value="monitoring">
+              <AccordionTrigger>Monitoring</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-sm leading-relaxed text-secondary-foreground">
+                  {advisory.monitoring}
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+          ) : null}
+        </Accordion>
+
+        {!chemical.recommended && chemical.notes ? (
+          <div className="rounded-lg bg-muted px-3 py-2.5 text-xs leading-relaxed text-secondary-foreground">
+            <strong className="font-semibold">No chemical control advised. </strong>
+            {chemical.notes}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }
