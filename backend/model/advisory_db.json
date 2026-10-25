@@ -1,0 +1,1047 @@
+{
+  "version": "1.0",
+  "updated": "2026-10-25",
+  "scope_note": "One entry per supported model class. The label list is identical to ml_training/class_names_canonical.json; backend/tests/test_advisory.py enforces that they stay in sync.",
+  "disclaimer": "This is general agricultural guidance for an early-screening decision-support tool, not a prescription. Always confirm the diagnosis, follow the product label exactly, verify that a product is registered for your crop and target in your state or country, use the stated protective equipment, and consult your local agricultural extension officer or Krishi Vigyan Kendra before applying any pesticide. Dosage figures are deliberately not provided here.",
+  "sources": [
+    "Penn State Extension — vegetable and field crop disease fact sheets (extension.psu.edu)",
+    "University of California Statewide IPM Program (ipm.ucanr.edu)",
+    "CABI Invasive Species Compendium / Crop Protection Compendium (cabi.org)",
+    "PlantVillage disease library, Penn State (plantvillage.psu.edu)",
+    "Indian Council of Agricultural Research — crop protection advisories (icar.org.in)"
+  ],
+  "entries": {
+    "Tomato___Bacterial_spot": {
+      "crop": "Tomato",
+      "condition": "Bacterial spot",
+      "pathogen": "Xanthomonas spp. (bacterium)",
+      "pathogen_type": "bacterial",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A bacterial leaf and fruit spot that spreads quickly in warm, wet weather and during overhead irrigation. Yield loss comes mainly from defoliation and unmarketable fruit.",
+      "symptoms": [
+        "Small water-soaked spots that turn dark brown to black with a yellow halo",
+        "Spots scattered across the leaf rather than in concentric rings",
+        "Raised, scabby dark lesions on fruit",
+        "Heavy defoliation in prolonged wet weather"
+      ],
+      "favorable_conditions": "Warm days (24-30 C), frequent rain or overhead irrigation, and splashing water. Bacteria survive on seed, crop debris and volunteer plants.",
+      "cultural_control": [
+        "Use certified disease-free seed and transplants; hot-water treat seed only if your extension office recommends it for your variety",
+        "Rotate away from tomato, pepper and other solanaceous crops for at least two years",
+        "Switch to drip irrigation and stop overhead watering",
+        "Stake and prune for airflow, and never handle plants while they are wet",
+        "Clear and destroy crop debris after harvest; control volunteer tomato plants"
+      ],
+      "organic_management": [
+        "Copper-based sprays reduce spread but do not cure existing infection, and copper-resistant strains are common",
+        "Bacillus-based biocontrol products applied preventively during wet spells",
+        "Mulch to stop soil splash reaching lower leaves"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Copper compounds (hydroxide, oxychloride, sulphate)",
+          "Copper combined with mancozeb where registered for tomato"
+        ],
+        "notes": "Bactericides are protectants: they work on healthy foliage before infection, so timing against rain is what matters. Efficacy is limited once symptoms are widespread, and copper resistance is documented in several regions.",
+        "safety": [
+          "Follow the label for dose, interval and pre-harvest interval",
+          "Do not exceed label copper rates — phytotoxicity and soil accumulation are real risks",
+          "Wear gloves, mask and eye protection when mixing"
+        ]
+      },
+      "monitoring": "Walk the field twice a week after rain and check lower and middle leaves first. Record new spots so you can tell whether a spray programme is holding.",
+      "weather_sensitivity": {
+        "humidity_min": 80,
+        "temp_range_c": [
+          24,
+          30
+        ],
+        "rain_driven": true,
+        "note": "Splash dispersal means rain and overhead irrigation drive new infections more than temperature alone."
+      },
+      "expert_referral": "Send for expert review if the spots are spreading despite treatment, or if you cannot distinguish this from early blight."
+    },
+    "Tomato___Early_blight": {
+      "crop": "Tomato",
+      "condition": "Early blight",
+      "pathogen": "Alternaria solani (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A common fungal leaf spot that starts on the oldest leaves and works upward, defoliating the plant and exposing fruit to sunscald. Most damaging when the crop is already stressed.",
+      "symptoms": [
+        "Brown spots with concentric rings (a target pattern) 1-2 cm across",
+        "A yellow halo around each spot",
+        "Lower, older leaves affected first",
+        "Sunken dark lesions at the stem end of fruit"
+      ],
+      "favorable_conditions": "Warm, humid weather with alternating wet and dry periods; plants weakened by poor nutrition, drought stress or heavy fruit load.",
+      "cultural_control": [
+        "Rotate with non-solanaceous crops for at least two years",
+        "Remove and destroy infected lower leaves early",
+        "Mulch to prevent soil splash; stake or cage plants to keep foliage off the ground",
+        "Maintain balanced nutrition and steady moisture — stressed plants suffer far more",
+        "Bury or remove crop debris; the fungus overwinters in residue"
+      ],
+      "organic_management": [
+        "Copper-based or sulphur-based protectant sprays where permitted for tomato",
+        "Bacillus subtilis products applied before symptoms appear",
+        "Neem-based products have limited effect on established lesions; use preventively"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Chlorothalonil (protectant, where registered)",
+          "Mancozeb (dithiocarbamate protectant)",
+          "Difenoconazole or other triazoles (systemic)",
+          "Azoxystrobin (QoI strobilurin) — use only in mixtures, resistance is widespread"
+        ],
+        "notes": "Protectants must be on the leaf before infection; systemics can arrest early lesions. Rotate active-ingredient groups between sprays to slow resistance, and note that QoI (strobilurin) resistance in Alternaria is well documented.",
+        "safety": [
+          "Follow label dose, spray interval and pre-harvest interval exactly",
+          "Rotate modes of action; do not apply the same group twice in a row",
+          "Keep bees and bystanders clear during application"
+        ]
+      },
+      "monitoring": "Check the lowest leaves weekly from first fruit set. If spots reach the upper third of the canopy, escalate — that is when yield loss starts.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          24,
+          29
+        ],
+        "rain_driven": false,
+        "note": "Warm humid spells with leaf wetness above roughly 8 hours favour rapid lesion expansion."
+      },
+      "expert_referral": "Ask for review if lesions lack concentric rings (suggesting a different pathogen) or if defoliation continues after two correctly timed sprays."
+    },
+    "Tomato___Late_blight": {
+      "crop": "Tomato",
+      "condition": "Late blight",
+      "pathogen": "Phytophthora infestans (oomycete)",
+      "pathogen_type": "oomycete",
+      "severity": "critical",
+      "is_healthy": false,
+      "summary": "The most destructive disease of tomato and potato. Under cool, wet conditions it can destroy a field within days, and it spreads between farms on wind-borne spores.",
+      "symptoms": [
+        "Large, irregular water-soaked grey-green patches, often at leaf edges",
+        "A pale green to white fuzzy growth on the underside in humid weather",
+        "Dark brown to black greasy lesions on stems",
+        "Firm brown rot on green fruit, and rapid total collapse of the plant"
+      ],
+      "favorable_conditions": "Cool (15-22 C) and very humid weather, fog, heavy dew or prolonged rain. Spores travel long distances on wind and can infect a new field overnight.",
+      "cultural_control": [
+        "Act on the first suspicion: remove and destroy infected plants — do not compost them",
+        "Avoid overhead irrigation entirely; water early in the day if at all",
+        "Increase plant spacing and prune for airflow",
+        "Do not store or dump cull potatoes or tomato waste near the field",
+        "Choose resistant or tolerant varieties where available; inform neighbouring growers, since this is a community-level problem"
+      ],
+      "organic_management": [
+        "Copper-based protectants applied on a short interval during cool wet spells",
+        "Preventive programmes only — organic options cannot rescue an infected plant",
+        "Physical removal of infected plants is the most effective organic action"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Mancozeb or chlorothalonil as protectants",
+          "Cymoxanil, dimethomorph or fluopicolide as systemic partners",
+          "Metalaxyl/mefenoxam — only in mixture; resistance to this group is common"
+        ],
+        "notes": "Late blight is treated on a calendar or forecast basis, not after symptoms appear. Once lesions are widespread, chemical control cannot save the crop. Follow regional late-blight forecast alerts where they exist.",
+        "safety": [
+          "Strictly observe the pre-harvest interval; this is a food-safety issue on fruit",
+          "Rotate active-ingredient groups between applications",
+          "Wear full protective equipment when mixing and spraying"
+        ]
+      },
+      "monitoring": "Check daily during cool wet weather. Report suspected cases to your extension office — regional late-blight monitoring depends on farmer reports.",
+      "weather_sensitivity": {
+        "humidity_min": 90,
+        "temp_range_c": [
+          15,
+          22
+        ],
+        "rain_driven": true,
+        "note": "Cool and wet is the danger window. Warm dry weather halts progress almost immediately."
+      },
+      "expert_referral": "Escalate immediately. Late blight is a notifiable concern in many regions and a wrong call is expensive in both directions."
+    },
+    "Tomato___Leaf_Mold": {
+      "crop": "Tomato",
+      "condition": "Leaf mould",
+      "pathogen": "Passalora fulva (Fulvia fulva), fungus",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A humidity-driven fungal disease, most serious in polyhouses, tunnels and dense canopies where air does not move. Rarely a problem in open fields with good airflow.",
+      "symptoms": [
+        "Pale yellow patches on the upper leaf surface",
+        "Olive-green to brown velvety mould on the corresponding underside",
+        "Leaves curl, dry and drop, defoliating the plant from the bottom up",
+        "Attacks older and middle leaves first"
+      ],
+      "favorable_conditions": "Relative humidity above 85% with poor ventilation; leaf wetness for long periods; dense unpruned canopies.",
+      "cultural_control": [
+        "Ventilate greenhouses and tunnels, especially overnight, to keep humidity down",
+        "Prune lower leaves and remove laterals to open the canopy",
+        "Space plants and avoid overwatering; water in the morning",
+        "Remove and destroy affected leaves; do not leave them on the floor of the structure",
+        "Grow resistant varieties where available"
+      ],
+      "organic_management": [
+        "Improve airflow first — this alone often controls the disease",
+        "Copper or sulphur-based protectants where registered",
+        "Biofungicide products based on Bacillus or Trichoderma as part of a preventive programme"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Chlorothalonil (protectant, where registered)",
+          "Mancozeb",
+          "Difenoconazole or tebuconazole (triazole systemics)"
+        ],
+        "notes": "In protected cultivation, humidity management outperforms spraying. Treat when the first yellow patches appear and keep intervals tight while humidity stays high.",
+        "safety": [
+          "Follow label intervals; do not spray close to harvest",
+          "Ensure ventilation during and after spraying in enclosed structures",
+          "Wear respiratory protection when spraying indoors"
+        ]
+      },
+      "monitoring": "Inspect the underside of lower leaves weekly — the mould is far easier to see there than on the upper surface.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          20,
+          25
+        ],
+        "rain_driven": false,
+        "note": "Humidity and still air matter more than rainfall; this is largely a protected-cultivation disease."
+      },
+      "expert_referral": "Send for review if yellowing appears on upper leaves without underside mould, which suggests a nutritional or viral cause instead."
+    },
+    "Tomato___Septoria_leaf_spot": {
+      "crop": "Tomato",
+      "condition": "Septoria leaf spot",
+      "pathogen": "Septoria lycopersici (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A splash-dispersed fungal spot that strips the lower canopy in wet seasons. Very common in open-field tomato after the first heavy rains.",
+      "symptoms": [
+        "Small circular spots, 2-6 mm, with grey-white centres and dark margins",
+        "Tiny black dots (pycnidia) visible in the centre of older spots",
+        "Lower leaves affected first, then upward",
+        "Heavy defoliation leaving fruit exposed to sunburn"
+      ],
+      "favorable_conditions": "Warm, wet weather with splashing rain or overhead irrigation; the fungus overwinters in crop residue and on solanaceous weeds.",
+      "cultural_control": [
+        "Rotate at least two years away from tomato and potato",
+        "Remove infected lower leaves and destroy crop residue after harvest",
+        "Mulch heavily to block soil splash",
+        "Use drip irrigation; avoid working among wet plants",
+        "Control solanaceous weeds such as nightshade around the field"
+      ],
+      "organic_management": [
+        "Copper-based protectants on a 7-10 day interval during wet weather",
+        "Bacillus subtilis biofungicides preventively",
+        "Mulching plus lower-leaf removal reduces inoculum substantially"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Chlorothalonil (protectant)",
+          "Mancozeb",
+          "Copper hydroxide",
+          "Azoxystrobin or difenoconazole as systemic partners"
+        ],
+        "notes": "Prevention beats cure: begin protectant sprays when the first spots appear on lower leaves, not after defoliation has begun.",
+        "safety": [
+          "Observe the pre-harvest interval on the label",
+          "Rotate active-ingredient groups across the season",
+          "Protect skin and eyes while mixing"
+        ]
+      },
+      "monitoring": "Weekly inspection of the lowest three leaves is enough — Septoria announces itself there first.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          20,
+          27
+        ],
+        "rain_driven": true,
+        "note": "Rain splash drives spread; the disease advances fastest in wet spells with warm days."
+      },
+      "expert_referral": "Request review if spots have no pale centre, which points toward bacterial spot or target spot instead."
+    },
+    "Tomato___Spider_mites_Two_spotted_spider_mite": {
+      "crop": "Tomato",
+      "condition": "Two-spotted spider mite",
+      "pathogen": "Tetranychus urticae (arthropod pest, not a disease)",
+      "pathogen_type": "pest",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A sap-sucking mite that stipples and bronzes leaves, thriving in hot dry conditions. Often mistaken for a disease because the damage looks like yellowing.",
+      "symptoms": [
+        "Fine pale stippling or speckling across the upper leaf surface",
+        "Leaves turn yellow-bronze and dry out",
+        "Fine webbing on leaf undersides and between leaflets",
+        "Mites visible as tiny moving specks on the underside, often with dust on the web"
+      ],
+      "favorable_conditions": "Hot, dry weather; water-stressed plants; dusty field edges. Broad-spectrum insecticide use that kills natural predators often triggers outbreaks.",
+      "cultural_control": [
+        "Keep plants well watered — drought stress accelerates mite build-up",
+        "Reduce dust along field edges, and keep border vegetation green",
+        "Remove and destroy heavily infested leaves and plants",
+        "Avoid unnecessary broad-spectrum insecticide sprays that destroy predatory mites"
+      ],
+      "organic_management": [
+        "Neem oil or horticultural soap sprays, applied to leaf undersides in the evening",
+        "Sulphur-based products where registered and temperatures are below about 30 C",
+        "Conserve or release predatory mites (Phytoseiulus persimilis) in protected cultivation"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Abamectin",
+          "Spiromesifen",
+          "Bifenazate",
+          "Fenazaquin"
+        ],
+        "notes": "Mites develop resistance quickly. Rotate between mode-of-action groups and never apply the same acaricide twice in succession. Mite-killing products are not the same as insecticides — check the label explicitly covers mites.",
+        "safety": [
+          "Follow the label dose and interval; over-application increases resistance",
+          "Avoid spraying during flowering to protect pollinators",
+          "Observe the pre-harvest interval carefully"
+        ]
+      },
+      "monitoring": "Turn over leaves weekly and look for stippling and webbing. Tap a leaf over white paper — moving specks confirm live mites.",
+      "weather_sensitivity": {
+        "humidity_max": 60,
+        "temp_range_c": [
+          27,
+          38
+        ],
+        "rain_driven": false,
+        "note": "Hot and dry is the risk window; heavy rain suppresses mite populations."
+      },
+      "expert_referral": "Ask for review if you see webbing but no mites, or if yellowing spreads without stippling — nutrient deficiency and viruses look similar."
+    },
+    "Tomato___Target_Spot": {
+      "crop": "Tomato",
+      "condition": "Target spot",
+      "pathogen": "Corynespora cassiicola (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A fungal spot producing concentric lesions that is easily confused with early blight. Favoured by long humid periods and dense canopies.",
+      "symptoms": [
+        "Brown lesions with concentric rings, often larger and more irregular than early blight",
+        "Pitted, sunken circular lesions on fruit",
+        "Yellowing around lesions and progressive defoliation",
+        "Damage often starts in the lower to middle canopy"
+      ],
+      "favorable_conditions": "Prolonged leaf wetness, high humidity and warm temperatures; dense planting with poor airflow.",
+      "cultural_control": [
+        "Rotate with non-host crops for at least two years",
+        "Prune and stake to improve airflow; remove infected leaves",
+        "Mulch to reduce splash from soil",
+        "Avoid overhead irrigation and avoid working in wet foliage",
+        "Destroy crop residue after harvest"
+      ],
+      "organic_management": [
+        "Copper-based protectants during humid periods",
+        "Bacillus-based biofungicides preventively",
+        "Canopy management to shorten leaf wetness duration"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Chlorothalonil (protectant)",
+          "Mancozeb",
+          "Difenoconazole or other triazoles",
+          "Azoxystrobin in mixture — QoI resistance is reported in this pathogen"
+        ],
+        "notes": "Because it mimics early blight, confirm the diagnosis before committing to a programme; the same actives generally cover both.",
+        "safety": [
+          "Follow label dose and pre-harvest interval",
+          "Rotate modes of action between sprays",
+          "Use protective equipment when mixing"
+        ]
+      },
+      "monitoring": "Compare lesion size and ring spacing with early blight — target spot lesions tend to be larger and less regular.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          22,
+          30
+        ],
+        "rain_driven": true,
+        "note": "Long wet periods with warm temperatures drive the epidemic."
+      },
+      "expert_referral": "Worth an expert look, because the visual overlap with early blight is the main practical difficulty."
+    },
+    "Tomato___Tomato_mosaic_virus": {
+      "crop": "Tomato",
+      "condition": "Tomato mosaic virus",
+      "pathogen": "Tomato mosaic virus (ToMV)",
+      "pathogen_type": "viral",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A mechanically transmitted virus with no chemical cure. It spreads on hands, tools, seed and clothing far more than by insects, so hygiene is the whole strategy.",
+      "symptoms": [
+        "Light and dark green mosaic or mottling on leaves",
+        "Leaf distortion, blistering and sometimes narrow 'fern-leaf' growth",
+        "Stunted plants with uneven ripening",
+        "Symptoms often appear on new growth after handling"
+      ],
+      "favorable_conditions": "Contaminated seed, infected transplants, and handling plants after tobacco use. The virus is extremely stable and survives on tools and hands.",
+      "cultural_control": [
+        "Use certified virus-free seed and resistant varieties (Tm-2 or Tm-2 squared genes)",
+        "Wash hands and disinfect tools with soap or a suitable disinfectant between plants and rows",
+        "Do not smoke or handle tobacco before working with tomato — ToMV is closely related to tobacco mosaic virus",
+        "Remove and destroy infected plants as soon as symptoms are clear",
+        "Control weeds and volunteer plants that can carry the virus"
+      ],
+      "organic_management": [
+        "There is no organic treatment that removes a plant virus",
+        "Roguing infected plants and strict tool hygiene are the only effective measures",
+        "Milk-based sprays are sometimes used in research settings but are not a reliable control"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [],
+        "notes": "No chemical controls a plant virus. Insecticides do not help here because ToMV is spread mechanically, not by insects.",
+        "safety": [
+          "Do not apply pesticides hoping to cure a virus; it wastes money and selects for resistance in real pests"
+        ]
+      },
+      "monitoring": "Watch new growth after any handling operation. If mosaic appears in a line of plants you just pruned, suspect tools and stop working that row.",
+      "weather_sensitivity": null,
+      "expert_referral": "Confirm with an expert before roguing an entire block — nutrient deficiency and herbicide drift can mimic mosaic."
+    },
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": {
+      "crop": "Tomato",
+      "condition": "Tomato yellow leaf curl virus",
+      "pathogen": "Tomato yellow leaf curl virus (TYLCV), transmitted by whitefly",
+      "pathogen_type": "viral",
+      "severity": "critical",
+      "is_healthy": false,
+      "summary": "A whitefly-transmitted virus that stunts plants and destroys yield. Because the vector moves between fields, control is about the whitefly population, not the plant.",
+      "symptoms": [
+        "Upward curling and yellowing of leaflet margins",
+        "Small, cupped leaves and shortened internodes giving a bushy appearance",
+        "Severe stunting and flower drop, very few fruit",
+        "Symptoms strongest on young growth"
+      ],
+      "favorable_conditions": "High whitefly (Bemisia tabaci) populations in warm weather; continuous tomato cropping with no break; infected transplants or volunteer plants nearby.",
+      "cultural_control": [
+        "Plant resistant or tolerant varieties — the single most effective measure",
+        "Use yellow sticky traps to monitor whitefly and insect-proof nets in nurseries",
+        "Reflective or straw mulches reduce whitefly landing on young plants",
+        "Remove infected plants early and destroy them",
+        "Break the cropping cycle: a host-free period reduces whitefly carry-over between seasons"
+      ],
+      "organic_management": [
+        "Neem-based products and insecticidal soaps suppress whitefly nymphs, not adults",
+        "Yellow sticky traps for monitoring and mass trapping in protected cultivation",
+        "Encourage or release natural enemies where practical"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Imidacloprid or thiamethoxam (neonicotinoid, seed or soil application where registered)",
+          "Spiromesifen or pyriproxyfen against nymphs",
+          "Diafenthiuron or similar where registered for whitefly"
+        ],
+        "notes": "The target is the whitefly vector, not the virus. Neonicotinoid resistance in whitefly is widespread in India, so rotate modes of action and use them as one part of an integrated programme. Insecticides will not cure an already infected plant.",
+        "safety": [
+          "Neonicotinoids are harmful to bees — never apply during flowering",
+          "Observe the label pre-harvest interval strictly",
+          "Rotate active ingredients to slow whitefly resistance"
+        ]
+      },
+      "monitoring": "Check yellow sticky traps weekly. Rising adult whitefly counts predict new infections two to three weeks later, so act on the trap trend, not on symptoms.",
+      "weather_sensitivity": {
+        "humidity_max": 70,
+        "temp_range_c": [
+          25,
+          35
+        ],
+        "rain_driven": false,
+        "note": "Warm dry conditions favour whitefly build-up; heavy rain reduces populations."
+      },
+      "expert_referral": "Escalate. TYLCV diagnosis changes the whole management plan and is easy to confuse with nutrient or herbicide issues."
+    },
+    "Tomato___healthy": {
+      "crop": "Tomato",
+      "condition": "Healthy",
+      "pathogen": null,
+      "pathogen_type": null,
+      "severity": "none",
+      "is_healthy": true,
+      "summary": "No disease detected with sufficient confidence. Keep scouting: the value of this result is the baseline it gives you for comparison later.",
+      "symptoms": [
+        "Uniform green foliage with no lesions, mottling or curling",
+        "Even growth and normal leaf size",
+        "No webbing, stippling or insect colonies on leaf undersides"
+      ],
+      "favorable_conditions": "Good airflow, balanced nutrition, steady moisture and crop rotation all keep disease pressure low.",
+      "cultural_control": [
+        "Scout twice a week, checking lower leaves first",
+        "Keep the canopy pruned and staked for airflow",
+        "Water at the base, in the morning, and avoid wetting foliage",
+        "Rotate crops and remove debris at the end of the season",
+        "Record what you see — a written scout log makes the next diagnosis far faster"
+      ],
+      "organic_management": [
+        "Maintain soil organic matter and mulching to support plant resilience",
+        "Encourage beneficial insects with border planting"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [],
+        "notes": "No treatment is warranted on a healthy plant. Preventative spraying without disease pressure wastes money and accelerates resistance.",
+        "safety": [
+          "Do not apply pesticides prophylactically without a diagnosed target"
+        ]
+      },
+      "monitoring": "Continue weekly scouting, and re-photograph the same plants so you can compare over time.",
+      "weather_sensitivity": null,
+      "expert_referral": "No review needed. If you believe the plant is diseased despite this result, re-photograph the affected area in good light and submit again."
+    },
+    "Rice___Bacterial_leaf_blight": {
+      "crop": "Rice",
+      "condition": "Bacterial leaf blight",
+      "pathogen": "Xanthomonas oryzae pv. oryzae (bacterium)",
+      "pathogen_type": "bacterial",
+      "severity": "high",
+      "is_healthy": false,
+      "summary": "A major bacterial disease of paddy, causing wilting of seedlings (kresek) and blighting of leaves. Losses are worst in high-nitrogen, waterlogged fields and after storms.",
+      "symptoms": [
+        "Water-soaked streaks starting at the leaf tip or margin, turning yellow then white",
+        "Lesions running along the leaf edge with a wavy margin",
+        "Milky bacterial ooze on the lesion surface in early morning",
+        "Seedling wilting and death in severe early infections"
+      ],
+      "favorable_conditions": "High humidity, rain and wind, standing water, and heavy nitrogen application. The bacterium survives in seed, stubble and irrigation water.",
+      "cultural_control": [
+        "Use certified seed and resistant varieties — this is the main defence",
+        "Apply nitrogen in splits and avoid excess; high N makes the crop far more susceptible",
+        "Drain the field for a few days when symptoms appear, if water supply allows",
+        "Avoid clipping seedling tips at transplanting, which opens entry points",
+        "Remove and destroy infected stubble; avoid movement of water between infected and clean plots"
+      ],
+      "organic_management": [
+        "Copper-based sprays can slow spread in the standing crop",
+        "Balanced nutrition, especially adequate potassium, improves tolerance",
+        "Avoid field operations while foliage is wet to limit mechanical spread"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Copper oxychloride, often combined with streptocycline, where registered for rice",
+          "Copper hydroxide"
+        ],
+        "notes": "Seed treatment and two or three sprays at early symptom appearance are the usual approach in Indian paddy systems. Antibiotic combinations are regulated differently across countries — confirm what is permitted and registered where you farm before buying anything.",
+        "safety": [
+          "Check that the product is registered for rice in your state",
+          "Observe the pre-harvest interval",
+          "Wear gloves and a mask; antibiotic-containing products require care in handling and disposal"
+        ]
+      },
+      "monitoring": "Scout after every rain and wind event, starting at field edges where wind-driven rain lands first.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          25,
+          34
+        ],
+        "rain_driven": true,
+        "note": "Wind-driven rain and standing water are the strongest drivers; excess nitrogen amplifies severity."
+      },
+      "expert_referral": "Send for review if lesions appear without the wavy edge — brown spot and nutrient deficiencies can look similar at a glance."
+    },
+    "Rice___Brown_spot": {
+      "crop": "Rice",
+      "condition": "Brown spot",
+      "pathogen": "Bipolaris oryzae (Helminthosporium oryzae), fungus",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A fungal leaf spot strongly associated with nutrient-poor or stressed soil. Historically significant in Bengal, and still a marker of poor field nutrition.",
+      "symptoms": [
+        "Oval to circular brown spots with a grey or whitish centre",
+        "Spots scattered across the leaf, sometimes with a yellow halo",
+        "Infection of the panicle and grain, causing discoloured kernels",
+        "Severe cases lead to seedling blight and poor establishment"
+      ],
+      "favorable_conditions": "Nutrient deficiency (especially nitrogen and potassium), poor water management, and humid weather with leaf wetness. Often worst in low-fertility or sandy soils.",
+      "cultural_control": [
+        "Correct soil fertility — this is the single most effective measure in most outbreaks",
+        "Use certified, treated seed and resistant varieties",
+        "Maintain proper water management; avoid both drought stress and prolonged deep flooding",
+        "Apply potassium and organic matter to build soil health",
+        "Remove crop residue and avoid continuous rice-on-rice cropping"
+      ],
+      "organic_management": [
+        "Compost and green manure to correct the underlying nutrient deficiency",
+        "Seed treatment with Trichoderma-based biocontrol products",
+        "Balanced organic nutrition generally reduces severity more than any spray"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Carbendazim (benzimidazole)",
+          "Mancozeb (protectant)",
+          "Propiconazole (triazole)"
+        ],
+        "notes": "Spraying is secondary to fixing nutrition. Treat at early symptom appearance; a well-nourished crop usually outgrows mild infection without spraying.",
+        "safety": [
+          "Follow the label dose and pre-harvest interval",
+          "Rotate active-ingredient groups where repeat sprays are needed",
+          "Wear protective clothing while spraying"
+        ]
+      },
+      "monitoring": "Check fields with known fertility problems first, and inspect grain at heading for discolouration.",
+      "weather_sensitivity": {
+        "humidity_min": 80,
+        "temp_range_c": [
+          25,
+          32
+        ],
+        "rain_driven": true,
+        "note": "Humidity matters, but soil nutrition is the dominant factor in this disease."
+      },
+      "expert_referral": "Ask for a soil test alongside expert review if brown spot recurs every season — the cause is usually agronomic."
+    },
+    "Rice___Leaf_smut": {
+      "crop": "Rice",
+      "condition": "Leaf smut",
+      "pathogen": "Entyloma oryzae (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "low",
+      "is_healthy": false,
+      "summary": "A minor fungal disease producing small black smut spots on leaves. Yield impact is usually small, so the correct response is often to observe rather than spray.",
+      "symptoms": [
+        "Small, slightly raised black spots on the leaf surface",
+        "Spots scattered along the blade, sometimes rectangular",
+        "Rarely causes significant defoliation or yield loss"
+      ],
+      "favorable_conditions": "Warm humid weather and dense canopy with prolonged leaf wetness. Generally a disease of over-lush, heavily fertilised crops.",
+      "cultural_control": [
+        "Avoid excessive nitrogen application",
+        "Maintain spacing and balanced nutrition",
+        "Remove and destroy heavily affected leaf material at the end of the season",
+        "Rotate crops where the disease recurs"
+      ],
+      "organic_management": [
+        "Usually no treatment needed; monitor instead",
+        "Balanced organic nutrition and good water management",
+        "Neem-based products are sometimes used but evidence is limited"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [
+          "Mancozeb or carbendazim, only if severity is unusually high and your extension officer advises it"
+        ],
+        "notes": "Spraying is rarely justified for leaf smut. Treating a low-impact disease wastes money and adds selection pressure.",
+        "safety": [
+          "If a spray is used, follow the label dose and pre-harvest interval"
+        ]
+      },
+      "monitoring": "Note it in your scout log and watch whether severity increases. Most seasons it will not.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          25,
+          30
+        ],
+        "rain_driven": false,
+        "note": "Humid, lush canopies favour it, but impact stays low."
+      },
+      "expert_referral": "Worth a review only if you see heavy spotting with yield loss, which would suggest a different pathogen."
+    },
+    "Rice___healthy": {
+      "crop": "Rice",
+      "condition": "Healthy",
+      "pathogen": null,
+      "pathogen_type": null,
+      "severity": "none",
+      "is_healthy": true,
+      "summary": "No disease detected with sufficient confidence. Maintain scouting, especially after rain and wind events.",
+      "symptoms": [
+        "Uniform green leaves with no streaks, spots or lesions",
+        "Even tillering and normal plant height",
+        "No discoloured grain at heading"
+      ],
+      "favorable_conditions": "Balanced fertilisation, good water management and resistant varieties keep paddy disease pressure low.",
+      "cultural_control": [
+        "Apply nitrogen in splits rather than all at once",
+        "Scout weekly, and immediately after storms",
+        "Maintain bunds and water depth consistent with the growth stage",
+        "Use certified seed and rotate varieties over seasons",
+        "Keep a written scout log for comparison"
+      ],
+      "organic_management": [
+        "Compost and green manure to maintain soil fertility",
+        "Encourage natural enemies by avoiding unnecessary sprays"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [],
+        "notes": "No treatment warranted without a diagnosed target.",
+        "safety": [
+          "Avoid prophylactic spraying; it selects for resistance and raises cost"
+        ]
+      },
+      "monitoring": "Continue weekly scouting through tillering and heading, when most paddy diseases become visible.",
+      "weather_sensitivity": null,
+      "expert_referral": "No review needed."
+    },
+    "Potato___Early_blight": {
+      "crop": "Potato",
+      "condition": "Early blight",
+      "pathogen": "Alternaria solani (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A target-spot fungus that defoliates older potato plants and reduces tuber size. More damaging in stressed or undernourished crops.",
+      "symptoms": [
+        "Dark brown spots with concentric rings on older leaves",
+        "Yellowing of tissue around lesions",
+        "Progressive loss of lower foliage",
+        "Tuber lesions are less common than in late blight"
+      ],
+      "favorable_conditions": "Warm humid weather alternating with dry periods; plants stressed by low nitrogen or drought.",
+      "cultural_control": [
+        "Rotate at least two years away from potato and tomato",
+        "Use certified seed tubers",
+        "Maintain balanced nitrogen and steady irrigation to reduce plant stress",
+        "Remove and destroy infected haulm at the end of the season",
+        "Hill soil around stems to protect tubers"
+      ],
+      "organic_management": [
+        "Copper-based protectants during humid spells",
+        "Bacillus subtilis products preventively",
+        "Good nutrition and irrigation management reduce severity markedly"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Mancozeb (protectant)",
+          "Chlorothalonil where registered",
+          "Difenoconazole or other triazoles",
+          "Azoxystrobin in mixture — QoI resistance is documented"
+        ],
+        "notes": "Start when lesions first appear on lower leaves and maintain intervals through humid weather. Rotate groups between sprays.",
+        "safety": [
+          "Follow the label pre-harvest interval before lifting tubers",
+          "Rotate modes of action",
+          "Use protective equipment while mixing and spraying"
+        ]
+      },
+      "monitoring": "Inspect lower leaves weekly from tuber initiation onward.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          24,
+          29
+        ],
+        "rain_driven": false,
+        "note": "Warm and humid with alternating wet-dry cycles favours lesion expansion."
+      },
+      "expert_referral": "Ask for review if lesions are large, water-soaked and spreading fast — that suggests late blight and a very different response."
+    },
+    "Potato___Late_blight": {
+      "crop": "Potato",
+      "condition": "Late blight",
+      "pathogen": "Phytophthora infestans (oomycete)",
+      "pathogen_type": "oomycete",
+      "severity": "critical",
+      "is_healthy": false,
+      "summary": "The disease behind historical potato famines and still the biggest threat to the crop. Cool, wet weather can destroy a field in under a week, and infected tubers rot in store.",
+      "symptoms": [
+        "Irregular water-soaked grey-green lesions, often at leaf tips and margins",
+        "White fuzzy growth on the underside of lesions in humid conditions",
+        "Dark greasy stem lesions",
+        "Reddish-brown granular dry rot in tubers, which continues in storage"
+      ],
+      "favorable_conditions": "Cool (15-22 C), very humid weather with fog, heavy dew or rain. Spores travel on wind between fields; infected seed tubers and cull piles are major sources.",
+      "cultural_control": [
+        "Plant certified disease-free seed tubers only",
+        "Destroy cull piles and volunteer plants — they are the main early inoculum source",
+        "Hill soil well to protect tubers from spores washing down",
+        "Reduce canopy density and avoid overhead irrigation",
+        "Cut and destroy haulm two to three weeks before harvest if the crop is infected, to protect tubers",
+        "Follow regional late-blight forecasts and treat on warning, not on symptoms"
+      ],
+      "organic_management": [
+        "Copper-based protectants on a short interval during cool wet spells",
+        "Preventive only; there is no organic rescue treatment",
+        "Rigorous removal of infected plants and cull material"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Mancozeb or chlorothalonil as protectants",
+          "Cymoxanil, dimethomorph or fluopicolide as systemic partners",
+          "Metalaxyl/mefenoxam only in mixture — resistance is common"
+        ],
+        "notes": "This is a forecast-driven programme, not a reactive one. Once the epidemic is established, no spray saves the crop; the goal shifts to protecting tubers.",
+        "safety": [
+          "Observe the pre-harvest interval strictly — tuber residues are a food-safety concern",
+          "Rotate active-ingredient groups every application where possible",
+          "Wear full protective equipment when mixing"
+        ]
+      },
+      "monitoring": "Check daily during cool wet weather and report suspected cases to your extension office.",
+      "weather_sensitivity": {
+        "humidity_min": 90,
+        "temp_range_c": [
+          15,
+          22
+        ],
+        "rain_driven": true,
+        "note": "Cool and wet is the danger window; the disease stalls in warm dry weather."
+      },
+      "expert_referral": "Escalate immediately — the cost of a wrong call is a lost crop and a storage loss."
+    },
+    "Potato___healthy": {
+      "crop": "Potato",
+      "condition": "Healthy",
+      "pathogen": null,
+      "pathogen_type": null,
+      "severity": "none",
+      "is_healthy": true,
+      "summary": "No disease detected with sufficient confidence. Keep scouting, particularly through humid spells when late blight can appear within days.",
+      "symptoms": [
+        "Uniform green foliage with no lesions or water-soaked patches",
+        "Even growth and normal leaf colour",
+        "No stem lesions or wilting"
+      ],
+      "favorable_conditions": "Certified seed, rotation, good hilling and balanced nutrition keep pressure low.",
+      "cultural_control": [
+        "Scout at least twice a week during humid weather",
+        "Keep cull piles and volunteers away from the field",
+        "Hill soil properly to protect tubers",
+        "Rotate with non-solanaceous crops",
+        "Record scouting observations for comparison"
+      ],
+      "organic_management": [
+        "Maintain soil health and organic matter",
+        "Avoid prophylactic sprays without a diagnosed target"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [],
+        "notes": "No treatment warranted. Late blight programmes should start on forecast warning, not pre-emptively on a healthy crop.",
+        "safety": [
+          "Avoid unnecessary applications; resistance and residue risk both rise"
+        ]
+      },
+      "monitoring": "Continue scouting until haulm destruction, and check stored tubers after harvest.",
+      "weather_sensitivity": null,
+      "expert_referral": "No review needed."
+    },
+    "Wheat___Yellow_rust": {
+      "crop": "Wheat",
+      "condition": "Yellow (stripe) rust",
+      "pathogen": "Puccinia striiformis f. sp. tritici (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "high",
+      "is_healthy": false,
+      "summary": "A wind-borne rust that forms yellow stripes of pustules and can cut yield severely when it arrives early. Historically a driver of wheat losses across South Asia.",
+      "symptoms": [
+        "Bright yellow to orange pustules arranged in stripes between leaf veins",
+        "Pustules mostly on the upper leaf surface",
+        "Yellowing and premature drying of leaves",
+        "Severe stunting and poor grain filling in early infections"
+      ],
+      "favorable_conditions": "Cool (10-20 C), moist weather with dew and cloud cover. Spores blow in from cooler regions and can travel hundreds of kilometres.",
+      "cultural_control": [
+        "Grow resistant or tolerant varieties — the foundation of rust management",
+        "Sow at the recommended time; late-sown crops often escape early infection",
+        "Avoid excess nitrogen, which produces lush susceptible growth",
+        "Remove volunteer wheat, a green bridge for the fungus between seasons",
+        "Watch regional rust advisories and act on them"
+      ],
+      "organic_management": [
+        "Sulphur-based products have limited efficacy once pustules erupt",
+        "Resistant varieties and sowing-date management are the practical organic levers",
+        "Early detection and rapid action matter more than any single product"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Propiconazole (triazole)",
+          "Tebuconazole (triazole)",
+          "Azoxystrobin in mixture where registered"
+        ],
+        "notes": "Spray at first sign of infection; a triazole applied early protects yield, while late application recovers little. Do not apply triazoles repeatedly at the same site — resistance in rusts is a documented concern.",
+        "safety": [
+          "Follow the label dose, water volume and pre-harvest interval",
+          "Rotate modes of action between sprays",
+          "Wear protective equipment while mixing and spraying"
+        ]
+      },
+      "monitoring": "Inspect crops weekly from tillering, checking lower leaves first — rust often starts low in the canopy.",
+      "weather_sensitivity": {
+        "humidity_min": 80,
+        "temp_range_c": [
+          10,
+          20
+        ],
+        "rain_driven": false,
+        "note": "Cool moist weather with dew drives it; hot dry weather slows progress."
+      },
+      "expert_referral": "Confirm with an expert before a blanket spray — rust species differ in sensitivity and timing matters."
+    },
+    "Wheat___Brown_rust": {
+      "crop": "Wheat",
+      "condition": "Brown (leaf) rust",
+      "pathogen": "Puccinia triticina (fungus)",
+      "pathogen_type": "fungal",
+      "severity": "high",
+      "is_healthy": false,
+      "summary": "The most widely distributed wheat rust. Orange-brown pustules scattered over the leaf reduce photosynthesis and grain fill.",
+      "symptoms": [
+        "Round orange-brown pustules scattered irregularly on the upper leaf surface",
+        "Pustules darker and less stripe-like than yellow rust",
+        "Yellowing and early senescence of affected leaves",
+        "Shriveled grain in severe infections"
+      ],
+      "favorable_conditions": "Warm (15-25 C) humid weather with dew; spores arrive on wind from other wheat-growing areas.",
+      "cultural_control": [
+        "Use resistant varieties and rotate them to slow resistance breakdown",
+        "Sow on time and avoid excessive nitrogen",
+        "Remove volunteer wheat and alternate hosts",
+        "Monitor regional rust advisories",
+        "Keep the crop well nourished but not over-lush"
+      ],
+      "organic_management": [
+        "Resistant varieties are the primary organic strategy",
+        "Sulphur products give partial suppression if applied early",
+        "Early detection plus variety choice outperforms any organic spray"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Propiconazole (triazole)",
+          "Tebuconazole (triazole)",
+          "Azoxystrobin or other strobilurins in mixture where registered"
+        ],
+        "notes": "Apply at first pustules. Brown rust responds well to triazoles if the spray lands before the epidemic takes off.",
+        "safety": [
+          "Observe the label pre-harvest interval",
+          "Rotate active-ingredient groups across the season",
+          "Protect skin and eyes when handling concentrates"
+        ]
+      },
+      "monitoring": "Weekly from tillering; examine the mid-canopy where humidity stays highest.",
+      "weather_sensitivity": {
+        "humidity_min": 80,
+        "temp_range_c": [
+          15,
+          25
+        ],
+        "rain_driven": false,
+        "note": "Warm humid conditions favour it; it tolerates higher temperatures than yellow rust."
+      },
+      "expert_referral": "Ask for review if pustules are dark brown to black and clustered, which could indicate a different rust or a late-stage infection."
+    },
+    "Wheat___Septoria": {
+      "crop": "Wheat",
+      "condition": "Septoria tritici blotch",
+      "pathogen": "Zymoseptoria tritici (Septoria tritici), fungus",
+      "pathogen_type": "fungal",
+      "severity": "moderate",
+      "is_healthy": false,
+      "summary": "A residue-borne fungal blotch that moves up the canopy in wet seasons and reduces grain fill. Management starts with stubble and rotation, not with the sprayer.",
+      "symptoms": [
+        "Irregular yellow-brown blotches with dark specks (pycnidia) inside",
+        "Lesions often bounded by leaf veins, giving a rectangular look",
+        "Lower leaves affected first, moving upward in wet weather",
+        "Premature leaf death and lighter grain"
+      ],
+      "favorable_conditions": "Prolonged wet weather with rain splash; the fungus survives on wheat stubble, so continuous wheat cropping increases pressure.",
+      "cultural_control": [
+        "Rotate with a non-cereal break crop to let stubble break down",
+        "Bury or remove stubble; avoid continuous wheat-on-wheat",
+        "Use resistant or tolerant varieties",
+        "Sow at the recommended time and avoid excessive canopy density",
+        "Keep nitrogen balanced — overly lush crops hold more humidity"
+      ],
+      "organic_management": [
+        "Rotation and residue management are the main organic tools",
+        "Copper-based products have limited effect on this pathogen",
+        "Variety choice matters more than any permitted input"
+      ],
+      "chemical_management": {
+        "recommended": true,
+        "active_ingredient_groups": [
+          "Propiconazole or tebuconazole (triazoles)",
+          "SDHI fungicides in mixture where registered",
+          "Chlorothalonil in mixture (protectant partner)"
+        ],
+        "notes": "Protect the upper two leaves, which fill the grain — spray timing at flag-leaf emergence matters more than product choice. Azole resistance in Zymoseptoria is well documented, so mixtures and rotations are important.",
+        "safety": [
+          "Follow the label dose and pre-harvest interval",
+          "Do not apply the same mode of action repeatedly",
+          "Use appropriate protective equipment"
+        ]
+      },
+      "monitoring": "Check lower leaves from stem elongation, then watch the flag leaf closely as it emerges.",
+      "weather_sensitivity": {
+        "humidity_min": 85,
+        "temp_range_c": [
+          15,
+          25
+        ],
+        "rain_driven": true,
+        "note": "Rain splash and long leaf wetness drive it; dry seasons keep it low in the canopy."
+      },
+      "expert_referral": "Worth an expert look if blotches lack the dark pycnidia, since nutrient deficiency and other blotches look similar."
+    },
+    "Wheat___healthy": {
+      "crop": "Wheat",
+      "condition": "Healthy",
+      "pathogen": null,
+      "pathogen_type": null,
+      "severity": "none",
+      "is_healthy": true,
+      "summary": "No disease detected with sufficient confidence. Rusts can arrive on wind within days, so keep scouting through the season.",
+      "symptoms": [
+        "Uniform green leaves with no pustules or blotches",
+        "Even tillering and normal plant height",
+        "No premature drying of lower leaves"
+      ],
+      "favorable_conditions": "Resistant varieties, timely sowing, rotation and balanced nutrition keep rust and blotch pressure low.",
+      "cultural_control": [
+        "Scout weekly from tillering, focusing on lower and mid-canopy leaves",
+        "Remove volunteer wheat and alternate hosts",
+        "Rotate varieties and crops between seasons",
+        "Follow regional rust advisories during cool moist spells",
+        "Keep a scout log for comparison"
+      ],
+      "organic_management": [
+        "Maintain soil organic matter and balanced nutrition",
+        "Encourage beneficial insects and avoid unnecessary sprays"
+      ],
+      "chemical_management": {
+        "recommended": false,
+        "active_ingredient_groups": [],
+        "notes": "No treatment warranted without a diagnosed target. Rust programmes should be triggered by detection or advisory, not by habit.",
+        "safety": [
+          "Avoid prophylactic spraying; it raises cost and resistance pressure"
+        ]
+      },
+      "monitoring": "Continue weekly scouting until grain filling, when rust damage does most harm.",
+      "weather_sensitivity": null,
+      "expert_referral": "No review needed."
+    }
+  }
+}

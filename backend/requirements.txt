@@ -1,0 +1,35 @@
+# CropGuard backend dependencies
+# Install with:  pip install -r requirements.txt
+#
+# NOTE ON TORCH: the default PyPI wheel for torch on Linux bundles CUDA and is
+# ~800 MB. A CPU-only deployment (Hugging Face free tier, Render free tier) should
+# install from the CPU index instead, which the Phase 7 Dockerfile does:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+
+# --- web framework -----------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# --- data layer --------------------------------------------------------------
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.10        # PostgreSQL driver (Supabase)
+alembic==1.14.0                # migrations, used from Phase 7 onward
+
+# --- validation / config -----------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# --- outbound HTTP (Open-Meteo weather) --------------------------------------
+httpx==0.28.1
+
+# --- image handling ----------------------------------------------------------
+Pillow==11.1.0
+cloudinary==1.41.0
+
+# --- AI inference ------------------------------------------------------------
+torch==2.5.1
+torchvision==0.20.1
+
+# --- tests -------------------------------------------------------------------
+pytest==8.3.4
