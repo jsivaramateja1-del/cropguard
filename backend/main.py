@@ -44,6 +44,7 @@ from inference import (
 )
 from models import CROP_TYPES, FollowUp, FollowUpCondition, Report, ReportStatus
 from storage import ALLOWED_CONTENT_TYPES, StorageError
+import weather_risk
 from weather_risk import assess_location
 
 logging.basicConfig(
@@ -279,6 +280,7 @@ def health() -> dict:
         "database": {**database_info(), "connected": db_ok, "error": db_error},
         "model": model,
         "storage": storage.storage_status(),
+        "weather": weather_risk.weather_status(),
         "confidence_threshold": settings.confidence_threshold,
         "advisory_entries": len(advisory_module.supported_diseases()),
     }

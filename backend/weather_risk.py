@@ -45,15 +45,20 @@ as unavailable, with the reason.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import httpx
 
+from config import settings
+
 logger = logging.getLogger("cropguard.weather")
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_CUSTOMER_URL = "https://customer-api.open-meteo.com/v1/forecast"
 
 RISK_LEVELS = ("Low", "Moderate", "High", "Critical")
 RISK_THRESHOLDS: Tuple[Tuple[int, str], ...] = ((7, "Critical"), (5, "High"), (3, "Moderate"), (0, "Low"))
@@ -74,6 +79,7 @@ class WeatherSnapshot:
     wind_kph: Optional[float]
     observed_at: Optional[str]
     source: str = "open-meteo"
+    cached: bool = False
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -84,7 +90,41 @@ class WeatherSnapshot:
             "wind_kph": self.wind_kph,
             "observed_at": self.observed_at,
             "source": self.source,
+            "cached": self.cached,
         }
+
+
+# ---------------------------------------------------------------------------
+# Response cache
+# ---------------------------------------------------------------------------
+# Open-Meteo's free endpoint is rate-limited per IP, and cloud platforms share egress
+# IPs, so a shared host can be throttled (HTTP 429) through no fault of its own. Two
+# defences: cache by rounded location so repeated demo submissions cost one request,
+# and retry the throttled ones with backoff.
+_CACHE_LOCK = threading.Lock()
+_CACHE: Dict[Tuple[float, float], Tuple[float, WeatherSnapshot]] = {}
+
+
+def _cache_key(latitude: float, longitude: float) -> Tuple[float, float]:
+    """Round to ~1 km so a field and its neighbouring rows share one entry."""
+    return (round(latitude, 2), round(longitude, 2))
+
+
+def clear_weather_cache() -> None:
+    with _CACHE_LOCK:
+        _CACHE.clear()
+
+
+def weather_status() -> Dict[str, object]:
+    """Non-secret weather configuration summary for /health."""
+    with _CACHE_LOCK:
+        entries = len(_CACHE)
+    return {
+        "cache_entries": entries,
+        "cache_ttl_seconds": settings.weather_cache_ttl,
+        "api_key_configured": bool(settings.open_meteo_api_key),
+        "endpoint": "customer" if settings.open_meteo_api_key else "public",
+    }
 
 
 @dataclass
@@ -132,10 +172,41 @@ def _level_for(score: int) -> str:
 def fetch_weather(
     latitude: float,
     longitude: float,
-    timeout: float = 8.0,
+    timeout: Optional[float] = None,
     client: Optional[httpx.Client] = None,
+    use_cache: bool = True,
+    retries: int = 2,
 ) -> WeatherSnapshot:
-    """Current conditions at a point. Raises WeatherError on any failure."""
+    """Current conditions at a point. Raises WeatherError on any failure.
+
+    Order of operations, all of it aimed at surviving a shared cloud IP:
+
+    1. Serve from the in-process cache when the same ~1 km square was fetched within
+       ``WEATHER_CACHE_TTL`` seconds. Repeating a demo submission costs nothing.
+    2. Request the customer endpoint when ``OPEN_METEO_API_KEY`` is set, which is not
+       subject to the free endpoint's per-IP limit.
+    3. Retry 429 and 5xx responses with a short backoff. A rate limit is often a
+       momentary burst rather than a hard block.
+    """
+    timeout = timeout or settings.weather_timeout
+    key = _cache_key(latitude, longitude)
+
+    if use_cache:
+        with _CACHE_LOCK:
+            hit = _CACHE.get(key)
+        if hit is not None and (time.time() - hit[0]) < settings.weather_cache_ttl:
+            cached = hit[1]
+            return WeatherSnapshot(
+                temperature_c=cached.temperature_c,
+                humidity_pct=cached.humidity_pct,
+                precipitation_mm=cached.precipitation_mm,
+                precipitation_probability_pct=cached.precipitation_probability_pct,
+                wind_kph=cached.wind_kph,
+                observed_at=cached.observed_at,
+                source=cached.source,
+                cached=True,
+            )
+
     params = {
         "latitude": f"{latitude:.4f}",
         "longitude": f"{longitude:.4f}",
@@ -144,23 +215,68 @@ def fetch_weather(
         "forecast_days": 1,
         "timezone": "auto",
     }
+    url = OPEN_METEO_URL
+    if settings.open_meteo_api_key:
+        url = OPEN_METEO_CUSTOMER_URL
+        params["apikey"] = settings.open_meteo_api_key
 
     own_client = client is None
     http = client or httpx.Client(timeout=timeout)
+    payload = None
     try:
-        response = http.get(OPEN_METEO_URL, params=params)
-        response.raise_for_status()
-        payload = response.json()
-    except httpx.TimeoutException as error:
-        raise WeatherError("The weather service did not respond in time.") from error
-    except httpx.HTTPStatusError as error:
-        raise WeatherError(
-            f"The weather service returned HTTP {error.response.status_code}."
-        ) from error
-    except httpx.HTTPError as error:
-        raise WeatherError(f"The weather service could not be reached: {error}") from error
-    except ValueError as error:
-        raise WeatherError("The weather service returned a response that is not JSON.") from error
+        last_error: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                response = http.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                break
+            except httpx.HTTPStatusError as error:
+                status_code = error.response.status_code
+                last_error = error
+                # 429 and 5xx are worth retrying; 4xx other than 429 will not improve.
+                if status_code != 429 and status_code < 500:
+                    raise WeatherError(
+                        f"The weather service returned HTTP {status_code}."
+                    ) from error
+                if attempt < retries:
+                    delay = 0.5 * (2 ** attempt)
+                    logger.info(
+                        "weather request throttled (HTTP %s), retrying in %.1fs",
+                        status_code, delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                if status_code == 429:
+                    raise WeatherError(
+                        "Open-Meteo rate limit reached for this server's IP (HTTP 429). "
+                        "Set OPEN_METEO_API_KEY to use the customer endpoint, or retry "
+                        "in a few minutes. A cached result for this location is reused "
+                        "for WEATHER_CACHE_TTL seconds once one succeeds."
+                    ) from error
+                raise WeatherError(
+                    f"The weather service returned HTTP {status_code} after "
+                    f"{retries + 1} attempts."
+                ) from error
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < retries:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise WeatherError("The weather service did not respond in time.") from error
+            except httpx.HTTPError as error:
+                raise WeatherError(
+                    f"The weather service could not be reached: {error}"
+                ) from error
+            except ValueError as error:
+                raise WeatherError(
+                    "The weather service returned a response that is not JSON."
+                ) from error
+
+        if payload is None:
+            raise WeatherError(
+                f"The weather service could not be reached: {last_error}"
+            )
     finally:
         if own_client:
             http.close()
@@ -186,7 +302,7 @@ def fetch_weather(
         if window:
             probability = float(max(window))
 
-    return WeatherSnapshot(
+    snapshot = WeatherSnapshot(
         temperature_c=round(temperature, 1),
         humidity_pct=round(humidity, 1),
         precipitation_mm=round(precipitation, 2),
@@ -194,6 +310,9 @@ def fetch_weather(
         wind_kph=float(wind) if isinstance(wind, (int, float)) else None,
         observed_at=observed if isinstance(observed, str) else datetime.now(timezone.utc).isoformat(),
     )
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.time(), snapshot)
+    return snapshot
 
 
 # ---------------------------------------------------------------------------

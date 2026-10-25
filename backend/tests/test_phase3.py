@@ -59,6 +59,13 @@ def leaf_jpeg() -> bytes:
 
 
 @pytest.fixture(autouse=True)
+def _clear_weather_cache():
+    weather_risk.clear_weather_cache()
+    yield
+    weather_risk.clear_weather_cache()
+
+
+@pytest.fixture(autouse=True)
 def _clean_reports():
     """Each test starts from an empty reports table."""
     with database.SessionLocal() as session:
@@ -267,7 +274,7 @@ def test_fetch_weather_raises_on_http_error():
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         with pytest.raises(weather_risk.WeatherError):
-            weather_risk.fetch_weather(16.5, 80.6, client=http)
+            weather_risk.fetch_weather(16.5, 80.6, client=http, retries=0)
 
 
 def test_fetch_weather_raises_on_broken_payload():
@@ -276,7 +283,7 @@ def test_fetch_weather_raises_on_broken_payload():
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         with pytest.raises(weather_risk.WeatherError):
-            weather_risk.fetch_weather(16.5, 80.6, client=http)
+            weather_risk.fetch_weather(16.5, 80.6, client=http, retries=0)
 
 
 def test_assess_location_degrades_when_weather_fails(monkeypatch):
@@ -703,3 +710,114 @@ def test_weather_endpoint_rejects_unknown_disease(client):
         params={"latitude": 16.5, "longitude": 80.6, "disease": "Tomato___Nope"},
     )
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Weather resilience (HTTP 429 on shared cloud IPs)
+# ---------------------------------------------------------------------------
+def _payload():
+    return {
+        "current": {
+            "time": "2026-10-25T12:00",
+            "temperature_2m": 28.0,
+            "relative_humidity_2m": 88,
+            "precipitation": 0.0,
+            "wind_speed_10m": 7.0,
+        },
+        "hourly": {"precipitation_probability": [10, 20, 30, 40, 5, 0]},
+    }
+
+
+def test_repeated_location_is_served_from_cache():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json=_payload())
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        first = weather_risk.fetch_weather(16.5062, 80.6480, client=http)
+        second = weather_risk.fetch_weather(16.5062, 80.6480, client=http)
+
+    assert first.cached is False
+    assert second.cached is True
+    assert len(calls) == 1, "the second call should not touch the network"
+
+
+def test_cache_is_keyed_by_location():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json=_payload())
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        weather_risk.fetch_weather(16.5062, 80.6480, client=http)
+        weather_risk.fetch_weather(17.0000, 81.0000, client=http)
+
+    assert len(calls) == 2
+
+
+def test_rate_limit_is_retried_then_succeeds():
+    attempts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        if len(attempts) == 1:
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(200, json=_payload())
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        snapshot = weather_risk.fetch_weather(16.5, 80.6, client=http, retries=2)
+
+    assert snapshot.temperature_c == 28.0
+    assert len(attempts) == 2
+
+
+def test_persistent_rate_limit_gives_actionable_advice():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(weather_risk.WeatherError) as error:
+            weather_risk.fetch_weather(16.5, 80.6, client=http, retries=1)
+
+    message = str(error.value)
+    assert "429" in message
+    assert "OPEN_METEO_API_KEY" in message
+
+
+def test_client_error_is_not_retried():
+    attempts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(400)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(weather_risk.WeatherError):
+            weather_risk.fetch_weather(16.5, 80.6, client=http, retries=3)
+
+    assert len(attempts) == 1, "a 400 will not improve by asking again"
+
+
+def test_api_key_switches_to_the_customer_endpoint(monkeypatch):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json=_payload())
+
+    monkeypatch.setattr(weather_risk.settings, "open_meteo_api_key", "test-key-123", raising=False)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        weather_risk.fetch_weather(16.5, 80.6, client=http)
+
+    assert "customer-api.open-meteo.com" in seen["url"]
+    assert "apikey=test-key-123" in seen["url"]
+
+
+def test_health_reports_weather_configuration(client):
+    payload = client.get("/health").json()
+    assert "weather" in payload
+    assert payload["weather"]["endpoint"] in {"public", "customer"}
+    assert isinstance(payload["weather"]["cache_entries"], int)

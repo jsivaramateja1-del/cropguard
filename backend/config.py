@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     class_names_path: str = "model/class_names.json"
     model_backend: str = "auto"  # auto | onnx | torch
 
+    # Weather (Open-Meteo). No key is required for non-commercial use, but the free
+    # endpoint is rate-limited per IP and cloud hosts share egress IPs — an API key
+    # moves requests to the customer endpoint and avoids HTTP 429 entirely.
+    open_meteo_api_key: str = ""
+    weather_cache_ttl: int = 600
+    weather_timeout: float = 8.0
+
     # Decision thresholds (see docs/calibration.md before changing)
     confidence_threshold: float = 0.75
 
