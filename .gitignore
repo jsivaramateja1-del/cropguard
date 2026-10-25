@@ -34,12 +34,11 @@ htmlcov/
 
 # ---------------------------------------------------------------------------
 # Model weights
-# Generated locally (generate_starter_model.py) or exported from Kaggle
-# (train_kaggle.py). Never commit binaries; regenerate with one command, or pull
-# the trained export from the Hugging Face Space / GitHub Release.
+# The ONNX artifact IS tracked: the Render/Hugging Face deployment serves it, so it
+# must be in the repository (16.8 MB). The PyTorch checkpoint stays out of git — it is
+# reproducible from Kaggle and is not used by the deployed backend.
 # ---------------------------------------------------------------------------
 backend/model/*.pth
-backend/model/*.onnx
 
 # ---------------------------------------------------------------------------
 # Local databases and uploaded leaf images (never commit user data)
