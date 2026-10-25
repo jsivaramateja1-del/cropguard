@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# Secrets and environment configuration
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+kaggle.json
+.kaggle/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Model weights
+# Generated locally (generate_starter_model.py) or exported from Kaggle
+# (train_kaggle.py). Never commit binaries; regenerate with one command, or pull
+# the trained export from the Hugging Face Space / GitHub Release.
+# ---------------------------------------------------------------------------
+backend/model/*.pth
+backend/model/*.onnx
+
+# ---------------------------------------------------------------------------
+# Local databases and uploaded leaf images (never commit user data)
+# ---------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+backend/cropguard_local.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ---------------------------------------------------------------------------
+# ML training working files
+# Keep the exported artifacts (cropguard_mobilenetv3.pth, class_names.json).
+# Ignore everything else the training pipeline produces.
+# ---------------------------------------------------------------------------
+ml_training/runs/
+ml_training/checkpoints/
+ml_training/*_log.csv
+ml_training/*_metrics.json
+ml_training/data/
+datasets/
+*.onnx
+
+# ---------------------------------------------------------------------------
+# Node / frontend
+# ---------------------------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ---------------------------------------------------------------------------
+# Editors and OS noise
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

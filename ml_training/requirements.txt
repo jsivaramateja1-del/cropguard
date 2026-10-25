@@ -1,0 +1,6 @@
+# Training dependencies. Kaggle and Colab images already ship torch + torchvision;
+# this file pins the versions the pipeline was validated against for other machines.
+torch>=2.2,<2.6
+torchvision>=0.17,<0.21
+Pillow>=10.0
+numpy>=1.24
