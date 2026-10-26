@@ -67,8 +67,8 @@ function HealthBanner() {
             : 'The server reports a degraded state. Some features may not work.',
         )
       })
-      .catch(() => {
-        if (!cancelled) setProblem(diagnoseConnectionFailure().message)
+      .catch((error) => {
+        if (!cancelled) setProblem(diagnoseConnectionFailure(error).message)
       })
     return () => {
       cancelled = true
@@ -374,6 +374,21 @@ export default function DiagnosePage() {
         </form>
       ) : (
         <div className="space-y-4">
+          {result.plausibility && result.plausibility.is_plausible_leaf === false ? (
+            <Alert variant="destructive">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-semibold">This does not look like a crop leaf</p>
+                <p className="mt-0.5">
+                  Only {Math.round(result.plausibility.vegetation_fraction * 100)}% of the photo
+                  looks like plant material. The model can only choose from its 16 known
+                  diseases, so the result below is likely meaningless. Take a clear photo of an
+                  affected leaf and try again.
+                </p>
+              </div>
+            </Alert>
+          ) : null}
+
           <Card className="animate-fade-in">
             <CardContent className="space-y-3.5 p-4">
               <div className="flex items-start justify-between gap-3">

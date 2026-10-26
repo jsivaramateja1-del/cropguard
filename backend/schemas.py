@@ -265,10 +265,24 @@ class AdvisoryOut(BaseModel):
 # ---------------------------------------------------------------------------
 # Analyze response
 # ---------------------------------------------------------------------------
+class PlausibilityOut(BaseModel):
+    """Whether the photo plausibly contains plant material at all.
+
+    The classifier is a closed 16-way softmax and cannot answer "none of these", so this
+    separate check is what stops an unrelated photo becoming a confident-looking
+    diagnosis with an advisory attached.
+    """
+
+    is_plausible_leaf: bool
+    vegetation_fraction: float
+    threshold: float
+
+
 class AnalyzeResponse(BaseModel):
     """Everything a farmer needs after one photo, in one payload."""
 
     report: ReportOut
+    plausibility: Optional[PlausibilityOut] = None
     advisory: Optional[AdvisoryOut] = None
     weather: Optional[Dict[str, object]] = None
     risk: Dict[str, object] = Field(default_factory=dict)

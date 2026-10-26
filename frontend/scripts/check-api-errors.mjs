@@ -103,25 +103,39 @@ check('a non-axios throw is wrapped', () => {
 // --- connection-failure diagnosis -------------------------------------------
 import { diagnoseConnectionFailure, API_BASE_URL } from '../src/api.js'
 
+const REMOTE = 'https://cropguard-pzs9.onrender.com'
+
 check('a localhost build served from a real host names the build config', () => {
   globalThis.window = { location: { hostname: 'cropguard.vercel.app' } }
-  const result = diagnoseConnectionFailure()
+  const result = diagnoseConnectionFailure(undefined, { baseUrl: 'http://localhost:8000' })
   assert.equal(result.cause, 'build-config')
   assert.match(result.message, /VITE_API_BASE_URL/)
   assert.match(result.message, /redeploy/)
+  delete globalThis.window
 })
 
 check('a remote build blames CORS and names the origin', () => {
-  globalThis.window = { location: { hostname: 'cropguard.vercel.app' } }
-  const original = API_BASE_URL
-  // The module-level constant cannot be reassigned; assert the fallback branch shape
-  // using a hostname that the regex will not match when the base is not localhost.
-  if (!/localhost|127\.0\.0\.1/.test(original)) {
-    const result = diagnoseConnectionFailure()
-    assert.equal(result.cause, 'cors-or-down')
-    assert.match(result.message, /FRONTEND_ORIGIN/)
-    assert.match(result.message, /cropguard\.vercel\.app/)
-  }
+  globalThis.window = { location: { hostname: 'cropguard-blush.vercel.app' } }
+  const result = diagnoseConnectionFailure(undefined, { baseUrl: REMOTE })
+  assert.equal(result.cause, 'cors-or-down')
+  assert.match(result.message, /FRONTEND_ORIGIN/)
+  assert.match(result.message, /cropguard-blush\.vercel\.app/)
+  delete globalThis.window
+})
+
+check('a timeout is blamed on a cold start, not on CORS', () => {
+  globalThis.window = { location: { hostname: 'cropguard-blush.vercel.app' } }
+  const result = diagnoseConnectionFailure({ code: 'ECONNABORTED' }, { baseUrl: REMOTE })
+  assert.equal(result.cause, 'cold-start')
+  assert.match(result.message, /wake/i)
+  assert.doesNotMatch(result.message, /FRONTEND_ORIGIN/)
+  delete globalThis.window
+})
+
+check('a 502 from a waking server is also a cold start', () => {
+  globalThis.window = { location: { hostname: 'cropguard-blush.vercel.app' } }
+  const result = diagnoseConnectionFailure({ status: 502 }, { baseUrl: REMOTE })
+  assert.equal(result.cause, 'cold-start')
   delete globalThis.window
 })
 

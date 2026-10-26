@@ -40,6 +40,7 @@ from inference import (
     InvalidImage,
     ModelUnavailable,
     get_model_service,
+    leaf_plausibility,
     open_image,
 )
 from models import CROP_TYPES, FollowUp, FollowUpCondition, Report, ReportStatus
@@ -194,6 +195,8 @@ def _decide_status(
     selected_crop: str,
     artifact_type: str,
     farmer_requested_review: bool,
+    plausible_leaf: bool = True,
+    vegetation_fraction: float = 1.0,
 ) -> tuple[ReportStatus, List[str]]:
     """Which reports need a human, and why.
 
@@ -215,6 +218,18 @@ def _decide_status(
         )
     if artifact_type == "development_untrained":
         reasons.append("The running model is a development artifact, not a trained one.")
+    if not plausible_leaf:
+        reasons.append(
+            f"The photo does not look like crop foliage — only "
+            f"{vegetation_fraction:.0%} of it is green or brown plant material. "
+            "The model must choose one of its 16 known classes, so this result is "
+            "unreliable."
+        )
+    if confidence < 0.35:
+        reasons.append(
+            "No class reached a plausible confidence. The photo may be outside the 16 "
+            "diseases this model knows."
+        )
 
     if reasons:
         return ReportStatus.PENDING_EXPERT_REVIEW, reasons
@@ -320,6 +335,8 @@ def analyze(
     except InvalidImage as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
+    plausibility = leaf_plausibility(pil_image)
+
     service = get_model_service()
     try:
         service.load()
@@ -350,6 +367,8 @@ def analyze(
         selected_crop=crop,
         artifact_type=prediction.artifact_type,
         farmer_requested_review=request_expert_review,
+        plausible_leaf=bool(plausibility["is_plausible_leaf"]),
+        vegetation_fraction=float(plausibility["vegetation_fraction"]),
     )
 
     report = Report(
@@ -386,6 +405,12 @@ def analyze(
         ) from error
 
     warnings = list(prediction.warnings)
+    if not plausibility["is_plausible_leaf"]:
+        warnings.append(
+            "This photo may not be a crop leaf. The model can only choose from its 16 "
+            "trained diseases, so treat the diagnosis above with suspicion and submit a "
+            "clear photo of an affected leaf."
+        )
     if stored.warning:
         warnings.append(stored.warning)
     if not risk.available:
@@ -393,6 +418,7 @@ def analyze(
 
     return schemas.AnalyzeResponse(
         report=schemas.ReportOut.model_validate(report),
+        plausibility=schemas.PlausibilityOut(**plausibility),
         advisory=_advisory_out(prediction.top.label),
         weather=weather.as_dict() if weather else None,
         risk=risk.as_dict(),

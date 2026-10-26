@@ -1020,3 +1020,99 @@ def test_wildcard_origin_regex_is_used_when_configured(monkeypatch):
         )
         blocked = client.get("/ping", headers={"Origin": "https://evil.example.com"})
         assert blocked.headers.get("access-control-allow-origin") is None
+
+
+# ---------------------------------------------------------------------------
+# Out-of-distribution guard
+# ---------------------------------------------------------------------------
+def _solid(colours, size=(240, 240)):
+    import numpy as np
+    from PIL import Image
+
+    array = np.zeros((size[1], size[0], 3), dtype=np.uint8)
+    band = size[0] // len(colours)
+    for index, colour in enumerate(colours):
+        start = index * band
+        end = size[0] if index == len(colours) - 1 else (index + 1) * band
+        array[:, start:end] = colour
+    import io
+
+    buffer = io.BytesIO()
+    Image.fromarray(array).save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def test_plausibility_accepts_foliage():
+    from PIL import Image
+
+    green = Image.new("RGB", (240, 240), (60, 120, 50))
+    brown = Image.new("RGB", (240, 240), (140, 110, 60))
+    assert inference.leaf_plausibility(green)["is_plausible_leaf"] is True
+    assert inference.leaf_plausibility(brown)["is_plausible_leaf"] is True
+
+
+def test_plausibility_rejects_non_plant_images():
+    from PIL import Image
+
+    for name, colour in [
+        ("costume red", (200, 30, 40)),
+        ("costume blue", (30, 60, 180)),
+        ("sky", (120, 170, 235)),
+        ("skin", (220, 170, 140)),
+        ("wall", (245, 245, 240)),
+    ]:
+        result = inference.leaf_plausibility(Image.new("RGB", (240, 240), colour))
+        assert result["is_plausible_leaf"] is False, name
+        assert result["vegetation_fraction"] < result["threshold"], name
+
+
+def test_implausible_photo_is_routed_and_warned(client):
+    """A non-leaf photo must be flagged, routed to a human, and warned about."""
+    response = client.post(
+        "/api/analyze",
+        files={"image": ("spiderman.jpg", _solid([(200, 30, 40), (30, 60, 180)]), "image/jpeg")},
+        data={
+            "crop_type": "Tomato",
+            "farmer_name": "Test Farmer",
+            "latitude": "16.5",
+            "longitude": "80.6",
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    assert payload["plausibility"]["is_plausible_leaf"] is False
+    assert payload["report"]["status"] == "Pending_Expert_Review"
+    assert payload["review_required"] is True
+    assert any("does not look like crop foliage" in reason for reason in payload["review_reasons"])
+    assert any("may not be a crop leaf" in warning for warning in payload["warnings"])
+
+
+def test_plausible_leaf_is_not_flagged(client):
+    response = client.post(
+        "/api/analyze",
+        files={"image": ("leaf.jpg", _solid([(60, 120, 50)]), "image/jpeg")},
+        data={
+            "crop_type": "Tomato",
+            "farmer_name": "Test Farmer",
+            "latitude": "16.5",
+            "longitude": "80.6",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["plausibility"]["is_plausible_leaf"] is True
+    assert not any("may not be a crop leaf" in warning for warning in payload["warnings"])
+
+
+def test_low_confidence_adds_an_out_of_scope_reason():
+    status, reasons = main._decide_status(
+        confidence=0.12,
+        predicted_crop="Tomato",
+        selected_crop="Tomato",
+        artifact_type="trained",
+        farmer_requested_review=False,
+        plausible_leaf=True,
+    )
+    assert status.value == "Pending_Expert_Review"
+    assert any("outside the 16 diseases" in reason for reason in reasons)

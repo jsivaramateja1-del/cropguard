@@ -92,25 +92,45 @@ export function toApiError(error) {
  * 2. The backend is reachable but rejects the origin — a CORS misconfiguration. Browsers
  *    report this as a network failure with no response, which is why the two look alike.
  */
-export function diagnoseConnectionFailure() {
+export function diagnoseConnectionFailure(error, { baseUrl = API_BASE_URL } = {}) {
   const host = typeof window !== 'undefined' ? window.location.hostname : ''
   const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === ''
-  const pointsAtLocalhost = /localhost|127\.0\.0\.1/.test(API_BASE_URL)
+  // baseUrl is injectable so the branches can be tested without a real deployment.
+  const pointsAtLocalhost = /localhost|127\.0\.0\.1/.test(baseUrl)
 
   if (pointsAtLocalhost && !isLocalHost) {
     return {
       cause: 'build-config',
       message:
-        `This build is pointing at ${API_BASE_URL}, which is this device — not the server. ` +
+        `This build is pointing at ${baseUrl}, which is this device — not the server. ` +
         'Set VITE_API_BASE_URL to your backend URL in the hosting environment and redeploy; ' +
         'Vite bakes it in at build time, so a refresh will not fix it.',
+    }
+  }
+
+  // A cold start looks like a network failure but means the opposite of a CORS block:
+  // the request reached the server and the server was not awake yet. Blaming CORS here
+  // sends people to the wrong setting.
+  const timedOut =
+    error?.code === 'ECONNABORTED' ||
+    error?.status === 504 ||
+    error?.status === 502 ||
+    /timed out|did not respond/i.test(error?.message || '')
+
+  if (timedOut) {
+    return {
+      cause: 'cold-start',
+      message:
+        `${baseUrl} did not respond in time. Free instances sleep when idle and take ` +
+        'about a minute to wake, so this is usually temporary — open ' +
+        `${baseUrl}/health to wake it, then try again.`,
     }
   }
 
   return {
     cause: 'cors-or-down',
     message:
-      `Could not reach ${API_BASE_URL}. If the backend is up (open ${API_BASE_URL}/health), ` +
+      `Could not reach ${baseUrl}. If the backend is up (open ${baseUrl}/health), ` +
       `the likely cause is CORS: add ${host || 'this site'} to FRONTEND_ORIGIN on the backend.`,
   }
 }

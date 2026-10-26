@@ -199,6 +199,66 @@ def open_image(raw: bytes) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
+# Out-of-distribution guard
+# ---------------------------------------------------------------------------
+def leaf_plausibility(
+    image: Image.Image,
+    min_fraction: float = 0.15,
+    sample: int = 96,
+) -> Dict[str, object]:
+    """Rough check that the photo plausibly contains plant material.
+
+    Why this exists: the classifier is a 16-way softmax, so it *must* return one of its
+    classes even for a photo of a person, a wall or a car. A softmax over a closed set
+    cannot express "none of these". Without a separate check, an unrelated image becomes
+    a confident-looking diagnosis with a full advisory attached.
+
+    The test is deliberately simple and explainable: what fraction of pixels look like
+    vegetation? Green foliage plus yellow/brown dying tissue both count, because a
+    diseased leaf is often the latter. Anything else — skin, sky, a red and blue costume —
+    does not.
+
+    This is a plausibility heuristic, not a classifier. It can be fooled (a green wall,
+    a leaf filling 5% of the frame) and it only ever *adds* caution: a low score routes
+    the report to expert review, it never overrides a confident in-distribution result.
+    """
+    small = image.convert("RGB").resize((sample, sample), Image.BILINEAR)
+    array = np.asarray(small, dtype=np.float32) / 255.0
+
+    red, green, blue = array[..., 0], array[..., 1], array[..., 2]
+    maximum = array.max(axis=-1)
+    minimum = array.min(axis=-1)
+    delta = maximum - minimum
+
+    saturation = np.where(maximum > 1e-6, delta / np.maximum(maximum, 1e-6), 0.0)
+
+    # Hue in degrees, vectorised. Where delta is zero the hue is undefined; 0 is fine
+    # because those pixels are grey and fail the saturation test anyway.
+    hue = np.zeros_like(maximum)
+    safe = delta > 1e-6
+    red_is_max = safe & (maximum == red)
+    green_is_max = safe & (maximum == green)
+    blue_is_max = safe & (maximum == blue)
+
+    hue[red_is_max] = (60 * ((green[red_is_max] - blue[red_is_max]) / delta[red_is_max])) % 360
+    hue[green_is_max] = 60 * ((blue[green_is_max] - red[green_is_max]) / delta[green_is_max]) + 120
+    hue[blue_is_max] = 60 * ((red[blue_is_max] - green[blue_is_max]) / delta[blue_is_max]) + 240
+
+    # Living foliage: yellow-green through green.
+    foliage = (hue >= 60) & (hue <= 180) & (saturation > 0.15) & (maximum > 0.10)
+    # Dying or dry tissue: yellow through orange-brown, darker and less vivid.
+    dying = (hue >= 15) & (hue < 60) & (saturation > 0.20) & (maximum < 0.85)
+
+    vegetation_fraction = float((foliage | dying).mean())
+
+    return {
+        "is_plausible_leaf": vegetation_fraction >= min_fraction,
+        "vegetation_fraction": round(vegetation_fraction, 3),
+        "threshold": min_fraction,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Model service
 # ---------------------------------------------------------------------------
 class ModelService:
