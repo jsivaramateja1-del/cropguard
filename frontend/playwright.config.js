@@ -17,6 +17,8 @@ const PORT = 4173
 
 export default defineConfig({
   testDir: './e2e',
+  // Fixtures are generated, not committed; see e2e/global-setup.js.
+  globalSetup: './e2e/global-setup.js',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

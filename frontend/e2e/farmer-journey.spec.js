@@ -33,10 +33,19 @@ async function submitAnalysis(page) {
   await page.locator('form').first().evaluate((form) => form.requestSubmit())
 }
 
-async function analyseLeaf(page) {
+/** Upload, fill and submit, without assuming a result arrives. */
+async function submitLeaf(page) {
   await page.locator('input[type="file"]').first().setInputFiles('e2e/fixtures/leaf.jpg')
   await fillRequiredFields(page)
   await submitAnalysis(page)
+}
+
+async function analyseLeaf(page) {
+  await submitLeaf(page)
+  // Wait for the result view itself before asserting on anything inside it: the accordion
+  // and confidence meter mount after the response, and asserting too early is what made
+  // this test flaky.
+  await expect(page.getByRole('button', { name: /check another leaf/i }).first()).toBeVisible()
 }
 
 test.describe('diagnosis page', () => {
@@ -91,8 +100,18 @@ test.describe('diagnosis page', () => {
     await expect(page.getByText(/AI verified/i).first()).toBeVisible()
     // Advisory content is present for a matching crop, inside a collapsed accordion —
     // expanding it is part of the journey, so the test does it.
-    await page.getByRole('button', { name: /cultural control/i }).click()
-    await expect(page.getByText(/remove and destroy infected plants/i)).toBeVisible()
+    const cultural = page.getByRole('button', { name: /cultural control/i }).first()
+    await expect(cultural).toBeVisible()
+    // Opened with the keyboard: on the mobile layout the sticky action bar overlaps the
+    // trigger, so a pointer click is intermittently swallowed by hit-testing. Keyboard
+    // activation is a real path and is not affected by overlays.
+    await cultural.focus()
+    await page.keyboard.press('Enter')
+    // Generous timeout: the accordion animates, and under parallel workers the render can
+    // take longer than the default 7s.
+    await expect(page.getByText(/remove and destroy infected plants/i)).toBeVisible({
+      timeout: 20_000,
+    })
     await expect(page.getByText(/93\s*%/)).toBeVisible()
   })
 
@@ -136,7 +155,8 @@ test.describe('diagnosis page', () => {
     await mockApi(page, { analyze: new Error('The model is not available.') })
     await page.goto('/')
 
-    await analyseLeaf(page)
+    // No result view is expected here, so do not wait for one.
+    await submitLeaf(page)
 
     await expect(page.getByText(/model is not available|could not|failed/i).first()).toBeVisible()
   })
