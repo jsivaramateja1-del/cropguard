@@ -545,6 +545,12 @@ def health() -> dict:
     return {
         "status": overall,
         "version": API_VERSION,
+        # Which build is live. A commit SHA is public information, and without it there is
+        # no way to tell whether a deployment actually picked up the latest code.
+        "build": {
+            "commit": settings.commit[:12],
+            "environment": settings.environment,
+        },
         "checks": {
             "database": {
                 "ok": db_ok and database.INIT_ERROR is None,

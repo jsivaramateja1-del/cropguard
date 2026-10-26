@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- deployment identity ---------------------------------------------------
+    # Render sets RENDER_GIT_COMMIT on every deploy; the local fallbacks let a developer
+    # see which build is running. A commit SHA is public information (the repository is
+    # public) and it is what makes "is the deployed build current?" answerable.
+    build_commit: str = ""
+    build_environment: str = ""
+
     # --- account authentication ------------------------------------------------
     # Signing key for access tokens. If unset, a random key is generated per process,
     # which invalidates tokens on restart — safe, but inconvenient, so set it.
@@ -114,6 +121,26 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # ------------------------------------------------------------------ helpers
+    @property
+    def commit(self) -> str:
+        """Which build is running, from the platform when it tells us."""
+        return (
+            self.build_commit.strip()
+            or os.environ.get("RENDER_GIT_COMMIT", "").strip()
+            or os.environ.get("GIT_COMMIT", "").strip()
+            or "unknown"
+        )
+
+    @property
+    def environment(self) -> str:
+        if self.build_environment.strip():
+            return self.build_environment.strip()
+        if os.environ.get("RENDER"):
+            return "render"
+        if os.environ.get("VERCEL"):
+            return "vercel"
+        return "local"
+
     @property
     def _origin_entries(self) -> List[str]:
         return [entry.strip() for entry in self.frontend_origin.split(",") if entry.strip()]

@@ -653,3 +653,13 @@ def test_image_tokens_are_unguessable(client, leaf):
     first = _create(client, leaf)["report"]["image_url"]
     second = _create(client, leaf)["report"]["image_url"]
     assert first != second
+
+
+def test_health_reports_which_build_is_live(client):
+    """Without this there is no way to tell whether a deploy picked up the latest code."""
+    body = client.get("/health").json()
+    assert "build" in body
+    assert body["build"]["commit"]
+    assert body["build"]["environment"] in {"local", "render", "vercel"}
+    # A commit SHA is public; the build block must not smuggle anything else in.
+    assert set(body["build"]) == {"commit", "environment"}
