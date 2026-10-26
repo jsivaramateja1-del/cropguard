@@ -16,6 +16,11 @@ SQLAlchemy==2.0.36
 pydantic==2.10.4
 pydantic-settings==2.7.0
 
+# Postgres driver. SQLAlchemy loads the DBAPI when create_engine() is called, so the
+# tests that exercise Postgres URLs (credential diagnostics, host diagnostics, startup
+# resilience) need it even though they never reach a real server.
+psycopg2-binary==2.9.10
+
 # inference (ONNX path) and image handling
 onnx==1.17.0
 onnxruntime==1.20.1
