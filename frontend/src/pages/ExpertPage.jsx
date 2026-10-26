@@ -9,7 +9,14 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react'
-import { fetchModelContract, fetchReviewQueue, loginAccount, verifyReport } from '../api.js'
+import {
+  decideExpertRequest,
+  fetchExpertRequests,
+  fetchModelContract,
+  fetchReviewQueue,
+  loginAccount,
+  verifyReport,
+} from '../api.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
@@ -53,6 +60,10 @@ export default function ExpertPage() {
   const [expertName, setExpertName] = useState('')
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState(null)
+  // Admin only: null means "not an administrator", so the section stays hidden.
+  const [applications, setApplications] = useState(null)
+  const [deciding, setDeciding] = useState(null)
+  const [decisionNotes, setDecisionNotes] = useState('')
 
   useEffect(() => {
     fetchModelContract()
@@ -81,9 +92,38 @@ export default function ExpertPage() {
     [],
   )
 
+  const loadApplications = useCallback(
+    async (activeToken) => {
+      if (!activeToken) return
+      try {
+        setApplications(await fetchExpertRequests(activeToken))
+      } catch {
+        setApplications(null)
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
-    if (token) load(token)
-  }, [token, load])
+    if (token) {
+      load(token)
+      loadApplications(token)
+    }
+  }, [token, load, loadApplications])
+
+  async function decide(applicationId, decision) {
+    setDeciding(applicationId)
+    setError(null)
+    try {
+      await decideExpertRequest(token, applicationId, decision, decisionNotes)
+      setDecisionNotes('')
+      await loadApplications(token)
+    } catch (decisionError) {
+      setError(decisionError)
+    } finally {
+      setDeciding(null)
+    }
+  }
 
   function signInWithToken(event) {
     event.preventDefault()
@@ -420,6 +460,70 @@ export default function ExpertPage() {
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {applications && applications.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Expert access requests</CardTitle>
+            <CardDescription>
+              Farmers asking to review reports. Approving gives the account the expert
+              role; they must sign in again for it to take effect.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {applications.map((application) => (
+              <div key={application.id} className="rounded-lg border border-border p-2.5">
+                <p className="text-xs font-semibold">
+                  {application.applicant_name || `User ${application.user_id}`}
+                  {application.applicant_email ? (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      · {application.applicant_email}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-2xs leading-relaxed text-secondary-foreground">
+                  {application.justification}
+                </p>
+                {application.affiliation || application.region_name ? (
+                  <p className="mt-1 text-2xs text-muted-foreground">
+                    {[application.affiliation, application.region_name].filter(Boolean).join(' · ')}
+                  </p>
+                ) : null}
+                <input
+                  className="mt-2 w-full rounded-md border border-input bg-card px-2 py-1.5 text-2xs"
+                  placeholder="Review note (optional, shown to the applicant)"
+                  value={decisionNotes}
+                  onChange={(event) => setDecisionNotes(event.target.value)}
+                />
+                <div className="mt-2 flex gap-1.5">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={deciding === application.id}
+                    onClick={() => decide(application.id, 'approve')}
+                  >
+                    {deciding === application.id ? (
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ShieldCheck size={13} aria-hidden="true" />
+                    )}
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="flex-1"
+                    disabled={deciding === application.id}
+                    onClick={() => decide(application.id, 'reject')}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : null}

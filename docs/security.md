@@ -109,6 +109,26 @@ The legacy `EXPERT_TOKEN` shared secret still authenticates staff. It is kept so
 already-deployed expert flow keeps working, and it is documented as legacy rather than
 recommended. A JWT for an expert or admin account is the supported path.
 
+## Expert approval workflow
+
+Recognition is requested, not granted:
+
+1. A signed-in farmer posts to `POST /api/expert-requests` with a justification. The
+   account **remains a farmer**; the request creates a `pending` row and nothing else.
+2. An administrator lists the queue at `GET /api/expert-requests` (admin role only) and
+   calls `.../approve` or `.../reject` with an optional note.
+3. Approval sets `users.role = expert` **and bumps `token_version`**, so the token the
+   applicant held while a farmer stops working. They sign in again and receive an expert
+   token. Without that bump, an old farmer-scoped token would silently gain staff powers.
+4. Both decisions write an `audit_events` row with the administrator's identity.
+
+Guards: one pending request per applicant; staff cannot apply; a request cannot be
+reviewed twice (`409`); only an administrator can approve, so nobody can approve
+themselves; a rejected applicant may apply again.
+
+`audit_events.report_id` is nullable so staff actions with no report — approving an
+expert, creating an account — can be audited too.
+
 ## Known limitations — stated rather than hidden
 
 1. **No password reset by email.** There is no mail provider configured, so a forgotten

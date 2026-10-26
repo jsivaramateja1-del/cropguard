@@ -137,6 +137,12 @@ def _apply_additive_migrations() -> None:
             "CREATE INDEX IF NOT EXISTS ix_reports_owner_user_id ON reports (owner_user_id)",
             "CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)",
             "CREATE INDEX IF NOT EXISTS ix_users_role ON users (role)",
+            "CREATE INDEX IF NOT EXISTS ix_expert_applications_user_id ON expert_applications (user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_expert_applications_status ON expert_applications (status)",
+            # Postgres only: an admin action has no report. SQLite cannot drop NOT NULL
+            # without rebuilding the table, so the statement is skipped there — local
+            # databases are recreated from the models, where the column is already nullable.
+            "ALTER TABLE audit_events ALTER COLUMN report_id DROP NOT NULL",
         ):
             try:
                 connection.execute(text(statement))

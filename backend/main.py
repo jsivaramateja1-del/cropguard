@@ -48,6 +48,7 @@ from inference import (
 )
 from models import (
     AuditEvent,
+    ExpertApplication,
     User,
     CROP_TYPES,
     FollowUp,
@@ -227,37 +228,46 @@ def _resolve_staff(authorization: Optional[str], db: Session) -> Optional[Tuple[
     return None
 
 
-def require_staff_dep(
-    authorization: Optional[str] = Header(default=None),
-    db: Session = Depends(get_db),
+def _require_staff_identity(
+    authorization: Optional[str], db: Session
 ) -> Tuple[str, str]:
-    identity = _resolve_staff(authorization, db)
-    if identity is None:
+    """Resolve a staff identity, distinguishing "who are you" from "not allowed".
+
+    401 means no usable identity was presented. 403 means a real, active account was
+    presented that simply lacks the role — telling a signed-in farmer "401" would wrongly
+    suggest their session is invalid.
+    """
+    legacy = security.staff_identity(authorization)
+    if legacy is not None:
+        return legacy
+
+    user = _user_from_authorization(authorization, db)
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="This endpoint requires an authenticated staff account.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return identity
+    if user.role not in auth.STAFF_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account does not have staff access.",
+        )
+    return user.role, user.display_name
+
+
+def require_staff_dep(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Tuple[str, str]:
+    return _require_staff_identity(authorization, db)
 
 
 def require_expert_dep(
     authorization: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ) -> Tuple[str, str]:
-    identity = _resolve_staff(authorization, db)
-    if identity is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="This endpoint requires an authenticated expert account.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if identity[0] not in auth.STAFF_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only an agricultural expert may perform this action.",
-        )
-    return identity
+    return _require_staff_identity(authorization, db)
 
 
 def optional_user(
@@ -849,8 +859,252 @@ def create_staff_account(
     db.add(user)
     db.commit()
     db.refresh(user)
+    _audit_staff_action(
+        db,
+        action="create_staff",
+        actor_role=staff[0],
+        actor_name=staff[1],
+        previous=None,
+        new=f"{payload.role}:{email}",
+    )
+    db.commit()
     logger.info("staff account %s created by %s", user.id, staff[1])
     return schemas.UserOut.model_validate(user)
+
+
+
+
+# ---------------------------------------------------------------------------
+# Expert applications
+# ---------------------------------------------------------------------------
+def _application_out(app: ExpertApplication, include_applicant: bool) -> schemas.ExpertApplicationOut:
+    payload = schemas.ExpertApplicationOut.model_validate(app)
+    if include_applicant and app.user is not None:
+        payload.applicant_email = app.user.email
+        payload.applicant_name = app.user.display_name
+    return payload
+
+
+def _audit_staff_action(
+    db: Session,
+    action: str,
+    actor_role: str,
+    actor_name: str,
+    previous: Optional[str],
+    new: Optional[str],
+    notes: Optional[str] = None,
+) -> None:
+    """Record a staff action that has no report attached to it."""
+    db.add(
+        AuditEvent(
+            report_id=None,
+            action=action,
+            actor_role=actor_role,
+            actor_name=actor_name,
+            previous_state=previous[:120] if previous else None,
+            new_state=new[:120] if new else None,
+            notes=notes,
+        )
+    )
+
+
+@app.post(
+    "/api/expert-requests",
+    response_model=schemas.ExpertApplicationOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ask to be recognised as an expert",
+)
+def request_expert_access(
+    payload: schemas.ExpertApplicationRequest,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> schemas.ExpertApplicationOut:
+    """A signed-in farmer applies for expert access.
+
+    Applying grants nothing. The account keeps the farmer role until an administrator
+    approves, and the applicant cannot approve their own request because that endpoint
+    requires the admin role.
+    """
+    if user.role in auth.STAFF_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This account is already recognised as {user.role}.",
+        )
+
+    existing = db.execute(
+        select(ExpertApplication)
+        .where(ExpertApplication.user_id == user.id)
+        .where(ExpertApplication.status == "pending")
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"You already have a request awaiting review (#{existing.id}). "
+                "An administrator will look at it."
+            ),
+        )
+
+    application = ExpertApplication(
+        user_id=user.id,
+        status="pending",
+        justification=payload.justification.strip(),
+        affiliation=(payload.affiliation or "").strip() or None,
+        region_name=(payload.region_name or "").strip() or None,
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+    logger.info("expert application %s created by user %s", application.id, user.id)
+    return _application_out(application, include_applicant=False)
+
+
+@app.get(
+    "/api/expert-requests/me",
+    response_model=schemas.ExpertApplicationListOut,
+    summary="My expert requests",
+)
+def my_expert_requests(
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> schemas.ExpertApplicationListOut:
+    rows = db.execute(
+        select(ExpertApplication)
+        .where(ExpertApplication.user_id == user.id)
+        .order_by(ExpertApplication.created_at.desc())
+    ).scalars().all()
+    return schemas.ExpertApplicationListOut(
+        applications=[_application_out(row, include_applicant=False) for row in rows]
+    )
+
+
+@app.get(
+    "/api/expert-requests",
+    response_model=schemas.ExpertApplicationListOut,
+    summary="Review queue for expert requests (admin only)",
+)
+def list_expert_requests(
+    status_filter: Optional[str] = Query(default="pending", alias="status"),
+    staff: Tuple[str, str] = Depends(require_staff_dep),
+    db: Session = Depends(get_db),
+) -> schemas.ExpertApplicationListOut:
+    if staff[0] != auth.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can review expert requests.",
+        )
+    query = select(ExpertApplication).order_by(ExpertApplication.created_at.desc())
+    if status_filter and status_filter != "all":
+        query = query.where(ExpertApplication.status == status_filter)
+    rows = db.execute(query.limit(200)).scalars().all()
+    return schemas.ExpertApplicationListOut(
+        applications=[_application_out(row, include_applicant=True) for row in rows]
+    )
+
+
+@app.post(
+    "/api/expert-requests/{application_id}/approve",
+    response_model=schemas.ExpertApplicationOut,
+    summary="Approve an expert request (admin only)",
+)
+def approve_expert_request(
+    application_id: int,
+    payload: schemas.ExpertApplicationReview,
+    staff: Tuple[str, str] = Depends(require_staff_dep),
+    db: Session = Depends(get_db),
+) -> schemas.ExpertApplicationOut:
+    if staff[0] != auth.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can approve expert requests.",
+        )
+
+    application = db.get(ExpertApplication, application_id)
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such request.")
+    if application.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This request was already {application.status}.",
+        )
+
+    applicant = db.get(User, application.user_id)
+    if applicant is None or not applicant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The applicant's account is no longer active.",
+        )
+
+    previous_role = applicant.role
+    applicant.role = auth.ROLE_EXPERT
+    # Invalidate tokens issued while they were a farmer, so the new role takes effect only
+    # after signing in again. Without this an old token would keep the old role.
+    applicant.token_version += 1
+
+    application.status = "approved"
+    application.reviewed_by = staff[1]
+    application.reviewed_at = datetime.now(timezone.utc)
+    application.review_notes = (payload.notes or "").strip() or None
+
+    _audit_staff_action(
+        db,
+        action="approve_expert",
+        actor_role=staff[0],
+        actor_name=staff[1],
+        previous=f"{previous_role}:user{applicant.id}",
+        new=f"expert:user{applicant.id}",
+        notes=application.review_notes,
+    )
+    db.commit()
+    db.refresh(application)
+    logger.info("expert application %s approved by %s", application.id, staff[1])
+    return _application_out(application, include_applicant=True)
+
+
+@app.post(
+    "/api/expert-requests/{application_id}/reject",
+    response_model=schemas.ExpertApplicationOut,
+    summary="Reject an expert request (admin only)",
+)
+def reject_expert_request(
+    application_id: int,
+    payload: schemas.ExpertApplicationReview,
+    staff: Tuple[str, str] = Depends(require_staff_dep),
+    db: Session = Depends(get_db),
+) -> schemas.ExpertApplicationOut:
+    if staff[0] != auth.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can reject expert requests.",
+        )
+
+    application = db.get(ExpertApplication, application_id)
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such request.")
+    if application.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This request was already {application.status}.",
+        )
+
+    application.status = "rejected"
+    application.reviewed_by = staff[1]
+    application.reviewed_at = datetime.now(timezone.utc)
+    application.review_notes = (payload.notes or "").strip() or None
+
+    _audit_staff_action(
+        db,
+        action="reject_expert",
+        actor_role=staff[0],
+        actor_name=staff[1],
+        previous=f"pending:application{application.id}",
+        new="rejected",
+        notes=application.review_notes,
+    )
+    db.commit()
+    db.refresh(application)
+    logger.info("expert application %s rejected by %s", application.id, staff[1])
+    return _application_out(application, include_applicant=True)
 
 
 # ---------------------------------------------------------------------------

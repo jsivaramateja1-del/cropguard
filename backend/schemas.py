@@ -211,6 +211,46 @@ class CreateStaffRequest(BaseModel):
     role: Literal["expert", "admin"]
 
 
+class ExpertApplicationRequest(BaseModel):
+    justification: str = Field(min_length=20, max_length=2000)
+    affiliation: Optional[str] = Field(default=None, max_length=160)
+    region_name: Optional[str] = Field(default=None, max_length=160)
+
+
+class ExpertApplicationReview(BaseModel):
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ExpertApplicationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    status: str
+    justification: str
+    affiliation: Optional[str] = None
+    region_name: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_notes: Optional[str] = None
+    created_at: datetime
+    # Filled in for admins so the queue is usable without a second lookup.
+    applicant_email: Optional[str] = None
+    applicant_name: Optional[str] = None
+
+    @field_serializer("created_at")
+    def _serialise_created(self, value: datetime) -> str:
+        return as_utc(value).isoformat()
+
+    @field_serializer("reviewed_at")
+    def _serialise_reviewed(self, value: Optional[datetime]) -> Optional[str]:
+        return as_utc(value).isoformat() if value else None
+
+
+class ExpertApplicationListOut(BaseModel):
+    applications: List[ExpertApplicationOut]
+
+
 class OutbreakPointOut(BaseModel):
     """One anonymised, aggregated map point.
 

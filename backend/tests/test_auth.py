@@ -124,9 +124,10 @@ def test_registration_cannot_grant_staff_role(client):
     assert response.status_code == 201
     assert response.json()["user"]["role"] == "farmer"
 
-    # And the resulting token cannot reach staff endpoints.
+    # And the resulting token cannot reach staff endpoints. 403, not 401: the account is
+    # real and signed in, it simply has no staff role.
     token = response.json()["access_token"]
-    assert client.get("/api/reports", headers=_auth(token)).status_code == 401
+    assert client.get("/api/reports", headers=_auth(token)).status_code == 403
 
 
 def test_duplicate_email_is_refused_without_confirming_it_exists(client):
@@ -290,7 +291,8 @@ def test_farmer_cannot_verify_reports(client, leaf):
         json={"action": "confirm", "expert_name": "Dr Rao"},
         headers=_auth(token),
     )
-    assert response.status_code == 401
+    # Authenticated but not staff: forbidden, not unauthenticated.
+    assert response.status_code == 403
 
 
 def test_expert_account_can_verify(client, leaf):
@@ -319,10 +321,14 @@ def test_expert_account_can_verify(client, leaf):
     assert response.json()["status"] == "Expert_Confirmed"
 
     with database.SessionLocal() as session:
-        event = session.query(models.AuditEvent).one()
+        # Staff creation is audited too now, so select the verification event itself.
+        events = session.query(models.AuditEvent).filter_by(action="verify").all()
+        assert len(events) == 1
+        event = events[0]
         # Identity comes from the account, not the name in the body.
         assert event.actor_role == "expert"
         assert event.actor_name == "Dr Expert"
+        assert event.report_id == report_id
 
 
 def test_expert_account_can_read_the_queue(client):
@@ -468,3 +474,167 @@ def test_deleting_an_account_requires_the_password(client):
         "DELETE", "/api/auth/account", json={"password": "wrong-password-x"}, headers=_auth(token)
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Expert approval workflow
+# ---------------------------------------------------------------------------
+def _apply(client, token, justification="I advise 40 farmers on tomato and rice in Andhra Pradesh."):
+    return client.post(
+        "/api/expert-requests",
+        json={"justification": justification, "affiliation": "KVK Guntur", "region_name": "Guntur"},
+        headers=_auth(token),
+    )
+
+
+def test_farmer_can_request_expert_access(client):
+    token = _register(client).json()["access_token"]
+    response = _apply(client, token)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["applicant_email"] is None, "the applicant does not need their own email echoed"
+
+    mine = client.get("/api/expert-requests/me", headers=_auth(token))
+    assert mine.status_code == 200
+    assert len(mine.json()["applications"]) == 1
+
+
+def test_applying_requires_an_account(client):
+    response = client.post(
+        "/api/expert-requests", json={"justification": "x" * 30}
+    )
+    assert response.status_code == 401
+
+
+def test_justification_must_be_substantial(client):
+    token = _register(client).json()["access_token"]
+    response = _apply(client, token, justification="please")
+    assert response.status_code == 422
+
+
+def test_duplicate_pending_requests_are_refused(client):
+    token = _register(client).json()["access_token"]
+    assert _apply(client, token).status_code == 201
+    second = _apply(client, token)
+    assert second.status_code == 409
+    assert "awaiting review" in second.json()["detail"]
+
+
+def test_staff_do_not_need_to_apply(client):
+    expert = _make_expert(client)
+    response = _apply(client, expert)
+    assert response.status_code == 409
+    assert "already recognised" in response.json()["detail"]
+
+
+def test_the_queue_is_admin_only(client):
+    farmer = _register(client).json()["access_token"]
+    _apply(client, farmer)
+
+    # Anonymous
+    assert client.get("/api/expert-requests").status_code == 401
+    # An expert account is staff but not an admin.
+    expert = _make_expert(client)
+    assert client.get("/api/expert-requests", headers=_auth(expert)).status_code == 403
+    # The applicant cannot see the queue either.
+    assert client.get("/api/expert-requests", headers=_auth(farmer)).status_code == 403
+
+
+def test_admin_sees_the_queue_with_applicant_details(client):
+    farmer = _register(client).json()["access_token"]
+    _apply(client, farmer)
+
+    response = client.get("/api/expert-requests", headers=ADMIN)
+    assert response.status_code == 200
+    entries = response.json()["applications"]
+    assert len(entries) == 1
+    assert entries[0]["applicant_email"] == "ravi@example.com"
+    assert entries[0]["applicant_name"] == "Ravi Kumar"
+
+
+def test_admin_approval_promotes_the_account(client):
+    farmer_token = _register(client).json()["access_token"]
+    application_id = _apply(client, farmer_token).json()["id"]
+
+    response = client.post(
+        f"/api/expert-requests/{application_id}/approve",
+        json={"notes": "Verified with the local KVK."},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "approved"
+    assert response.json()["reviewed_by"] == "Test Administrator"
+
+    # The token issued while they were a farmer must no longer work: approval bumps the
+    # token version precisely so an old farmer-scoped token cannot become an expert one.
+    assert client.get("/api/auth/me", headers=_auth(farmer_token)).status_code == 401
+
+    # Signing in again yields the expert role and access to the review queue.
+    login = client.post(
+        "/api/auth/login", json={"email": "ravi@example.com", "password": PASSWORD}
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["role"] == "expert"
+    new_token = login.json()["access_token"]
+    assert client.get("/api/reports", headers=_auth(new_token)).status_code == 200
+
+
+def test_approval_is_audited_without_a_report(client):
+    farmer_token = _register(client).json()["access_token"]
+    application_id = _apply(client, farmer_token).json()["id"]
+    client.post(f"/api/expert-requests/{application_id}/approve", json={}, headers=ADMIN)
+
+    with database.SessionLocal() as session:
+        event = session.query(models.AuditEvent).filter_by(action="approve_expert").one()
+        assert event.report_id is None
+        assert event.actor_role == "admin"
+        assert "expert" in event.new_state
+
+
+def test_a_request_cannot_be_approved_twice(client):
+    farmer_token = _register(client).json()["access_token"]
+    application_id = _apply(client, farmer_token).json()["id"]
+    assert client.post(
+        f"/api/expert-requests/{application_id}/approve", json={}, headers=ADMIN
+    ).status_code == 200
+    again = client.post(
+        f"/api/expert-requests/{application_id}/approve", json={}, headers=ADMIN
+    )
+    assert again.status_code == 409
+
+
+def test_admin_can_reject_with_notes_and_the_role_is_unchanged(client):
+    farmer_token = _register(client).json()["access_token"]
+    application_id = _apply(client, farmer_token).json()["id"]
+
+    response = client.post(
+        f"/api/expert-requests/{application_id}/reject",
+        json={"notes": "Could not verify the affiliation."},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    assert response.json()["review_notes"] == "Could not verify the affiliation."
+
+    me = client.get("/api/auth/me", headers=_auth(farmer_token))
+    assert me.status_code == 200
+    assert me.json()["role"] == "farmer", "rejection must not change the role"
+
+    # And they may apply again after a rejection.
+    assert _apply(client, farmer_token).status_code == 201
+
+
+def test_an_expert_cannot_approve_requests(client):
+    farmer_token = _register(client).json()["access_token"]
+    application_id = _apply(client, farmer_token).json()["id"]
+    expert = _make_expert(client)
+    response = client.post(
+        f"/api/expert-requests/{application_id}/approve", json={}, headers=_auth(expert)
+    )
+    assert response.status_code == 403
+
+
+def test_approving_an_unknown_request_is_a_clean_404(client):
+    response = client.post("/api/expert-requests/9999/approve", json={}, headers=ADMIN)
+    assert response.status_code == 404

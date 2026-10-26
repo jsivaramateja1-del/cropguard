@@ -357,6 +357,57 @@ export async function deleteAccount(password) {
   }
 }
 
+// --- expert applications ----------------------------------------------------
+
+export async function requestExpertAccess({ justification, affiliation, regionName }) {
+  try {
+    const { data } = await api.post('/api/expert-requests', {
+      justification,
+      affiliation: affiliation || null,
+      region_name: regionName || null,
+    })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+export async function fetchMyExpertRequests() {
+  try {
+    const { data } = await api.get('/api/expert-requests/me')
+    return data.applications || []
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** Admin only. Returns null when the caller is not an administrator. */
+export async function fetchExpertRequests(staffToken, status = 'pending') {
+  try {
+    const { data } = await api.get('/api/expert-requests', {
+      params: { status },
+      headers: staffToken ? { Authorization: `Bearer ${staffToken}` } : {},
+    })
+    return data.applications || []
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) return null
+    throw error
+  }
+}
+
+export async function decideExpertRequest(staffToken, applicationId, decision, notes) {
+  try {
+    const { data } = await api.post(
+      `/api/expert-requests/${applicationId}/${decision}`,
+      { notes: notes || null },
+      { headers: staffToken ? { Authorization: `Bearer ${staffToken}` } : {} },
+    )
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
 /** The deployed model's contract: classes, crops, healthy-class coverage, thresholds. */
 export async function fetchModelContract() {
   try {

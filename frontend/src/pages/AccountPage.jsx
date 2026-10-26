@@ -1,13 +1,25 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, LogIn, LogOut, ShieldCheck, Trash2, TriangleAlert, UserRound } from 'lucide-react'
+import {
+  CheckCircle2,
+  Clock,
+  LogIn,
+  LogOut,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+  UserRound,
+  XCircle,
+} from 'lucide-react'
 import {
   changePassword,
   deleteAccount,
   fetchMe,
+  fetchMyExpertRequests,
   getAuthToken,
   loginAccount,
   logoutAccount,
   registerAccount,
+  requestExpertAccess,
 } from '../api.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card.jsx'
 import { Button } from '../components/ui/button.jsx'
@@ -33,6 +45,12 @@ export default function AccountPage() {
   // Delete
   const [deletePassword, setDeletePassword] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Expert access request
+  const [applications, setApplications] = useState([])
+  const [justification, setJustification] = useState('')
+  const [affiliation, setAffiliation] = useState('')
+  const [requestRegion, setRequestRegion] = useState('')
+  const [requesting, setRequesting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -45,6 +63,13 @@ export default function AccountPage() {
     fetchMe()
       .then((data) => {
         if (!cancelled) setUser(data)
+        if (data.role === 'farmer') {
+          fetchMyExpertRequests()
+            .then((rows) => {
+              if (!cancelled) setApplications(rows)
+            })
+            .catch(() => {})
+        }
       })
       .catch(() => {
         if (!cancelled) setUser(null)
@@ -78,6 +103,26 @@ export default function AccountPage() {
       setError(authError)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function submitExpertRequest(event) {
+    event.preventDefault()
+    setRequesting(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await requestExpertAccess({ justification, affiliation, regionName: requestRegion })
+      const rows = await fetchMyExpertRequests()
+      setApplications(rows)
+      setJustification('')
+      setAffiliation('')
+      setRequestRegion('')
+      setNotice('Request sent. An administrator will review it.')
+    } catch (requestError) {
+      setError(requestError)
+    } finally {
+      setRequesting(false)
     }
   }
 
@@ -268,6 +313,104 @@ export default function AccountPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {user.role === 'farmer' ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm">
+              <ShieldCheck size={14} aria-hidden="true" />
+              Expert access
+            </CardTitle>
+            <CardDescription>
+              Ask to review farmers' reports as an agricultural expert. An administrator
+              decides; approval does not happen automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {applications.length > 0 ? (
+              <div className="space-y-1.5">
+                {applications.slice(0, 3).map((application) => (
+                  <div
+                    key={application.id}
+                    className="flex items-start gap-2 rounded-lg bg-muted px-2.5 py-2"
+                  >
+                    {application.status === 'approved' ? (
+                      <CheckCircle2 size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    ) : application.status === 'rejected' ? (
+                      <XCircle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <Clock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-2xs font-semibold capitalize">
+                        Request #{application.id}: {application.status}
+                      </p>
+                      {application.review_notes ? (
+                        <p className="text-2xs text-muted-foreground">
+                          {application.review_notes}
+                        </p>
+                      ) : null}
+                      {application.status === 'pending' ? (
+                        <p className="text-2xs text-muted-foreground">
+                          Waiting for an administrator.
+                        </p>
+                      ) : null}
+                      {application.status === 'approved' ? (
+                        <p className="text-2xs text-muted-foreground">
+                          Sign out and back in to receive the expert role.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {applications.some((application) => application.status === 'pending') ? null : (
+              <form onSubmit={submitExpertRequest} className="space-y-2">
+                <div>
+                  <Label htmlFor="justification">Why should you be recognised?</Label>
+                  <textarea
+                    id="justification"
+                    rows={3}
+                    className="mt-1 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-sm"
+                    placeholder="Your experience, the crops you advise on, who you work with…"
+                    value={justification}
+                    onChange={(event) => setJustification(event.target.value)}
+                  />
+                  <p className="mt-1 text-2xs text-muted-foreground">At least 20 characters.</p>
+                </div>
+                <div>
+                  <Label htmlFor="affiliation">Organisation (optional)</Label>
+                  <Input
+                    id="affiliation"
+                    className="mt-1"
+                    value={affiliation}
+                    onChange={(event) => setAffiliation(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="request-region">Region (optional)</Label>
+                  <Input
+                    id="request-region"
+                    className="mt-1"
+                    value={requestRegion}
+                    onChange={(event) => setRequestRegion(event.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  className="w-full"
+                  disabled={requesting || justification.trim().length < 20}
+                >
+                  {requesting ? 'Sending…' : 'Request expert access'}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="pb-2">

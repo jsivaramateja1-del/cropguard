@@ -34,6 +34,8 @@ down is equally honest.
 | Advisory | 21-entry knowledge base, no invented dosages, viruses and mites flagged as not chemically treatable |
 | Reports | Persisted in Supabase Postgres; public reference `CG-00042` plus a one-time access code |
 | Expert review | Queue, confirm/correct with notes, append-only audit trail |
+| Accounts | Farmer self-registration, bcrypt passwords, JWT sessions, revocation |
+| Expert approval | Farmers apply; an admin approves, which promotes the account and invalidates old tokens |
 | Follow-up | Reference + access code, condition status, optional photo, full timeline |
 | Outbreak map | Public `/api/outbreaks` with coordinates rounded to ~1 km; Leaflet, lazy-loaded |
 | Security | Anonymous farmers with scoped tokens, bearer-token staff auth, ownership checks, rate limiting, content-based upload validation |
@@ -155,6 +157,11 @@ cd frontend && npm run test:errors && npm run test:render
 | `PATCH` | `/api/reports/{id}/verify` | expert — writes an audit event |
 | `POST` | `/api/reports/{id}/followup` | owner token or staff |
 | `GET` | `/api/stats` | staff |
+| `POST` | `/api/auth/register` · `/login` · `/logout` · `/password` | public / account |
+| `GET` | `/api/auth/me` | account |
+| `POST` | `/api/expert-requests` | account |
+| `GET` | `/api/expert-requests` | admin |
+| `POST` | `/api/expert-requests/{id}/approve` · `/reject` | admin |
 
 Full detail in [docs/api.md](docs/api.md).
 

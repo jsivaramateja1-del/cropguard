@@ -192,8 +192,10 @@ class FollowUp(Base):
     __tablename__ = "follow_ups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    report_id: Mapped[int] = mapped_column(
-        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable: staff and account actions (approving an expert, creating an account) are
+    # audited too, and they have no report to point at.
+    report_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     condition_status: Mapped[FollowUpCondition] = mapped_column(
@@ -238,6 +240,34 @@ class User(Base):
     reports: Mapped[List["Report"]] = relationship(back_populates="owner_user")
 
 
+class ExpertApplication(Base):
+    """A farmer asking to be recognised as an agricultural expert.
+
+    Nothing about this grants capability by itself: the account stays a farmer until an
+    administrator approves, and approval bumps the account's token version so an old
+    farmer-scoped token cannot be reused as an expert token.
+    """
+
+    __tablename__ = "expert_applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
+    justification: Mapped[str] = mapped_column(Text, nullable=False)
+    affiliation: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    region_name: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    user: Mapped["User"] = relationship()
+
+
 class AuditEvent(Base):
     """Append-only record of privileged actions.
 
@@ -249,8 +279,10 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    report_id: Mapped[int] = mapped_column(
-        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable: staff and account actions (approving an expert, creating an account) are
+    # audited too, and they have no report to point at.
+    report_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=True, index=True
     )
     action: Mapped[str] = mapped_column(String(48), nullable=False)
     actor_role: Mapped[str] = mapped_column(String(24), nullable=False)
@@ -262,4 +294,4 @@ class AuditEvent(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
 
-    report: Mapped["Report"] = relationship(back_populates="audit_events")
+    report: Mapped[Optional["Report"]] = relationship(back_populates="audit_events")
