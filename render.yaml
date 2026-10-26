@@ -1,0 +1,33 @@
+# Render blueprint. Optional: the live service was created through the dashboard, so
+# applying this file would create a *second* service rather than adopt the existing one.
+# Kept as documented, reproducible configuration.
+services:
+  - type: web
+    name: cropguard-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DATABASE_URL
+        sync: false          # set in the dashboard; contains a password
+      - key: EXPERT_TOKEN
+        sync: false          # no default on purpose: unset means no privileged access
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: EXPERT_NAME
+        value: Agricultural expert
+      - key: FRONTEND_ORIGIN
+        value: https://cropguard-blush.vercel.app
+      - key: CONFIDENCE_THRESHOLD
+        value: "0.75"
+      - key: OOD_CONFIDENCE_FLOOR
+        value: "0.88"
+      - key: ANALYZE_RATE_LIMIT
+        value: "20"

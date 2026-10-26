@@ -1,0 +1,11 @@
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+**/dist
+backend/uploads
+backend/*.db
+backend/model/*.pth
+.git
+.github
+ml_training/data
