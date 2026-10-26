@@ -788,3 +788,20 @@ def test_diseases_endpoint_is_public_and_marks_model_coverage(client):
     assert late_blight["symptoms"]
     assert late_blight["summary"]
     assert late_blight["is_healthy"] is False
+
+
+def test_review_queue_carries_the_photo_and_confidence(client, leaf):
+    """Two bugs the expert page showed: no image_url on the queue, and a 0% confidence.
+
+    The queue returns ReportSummary, which lacked image_url entirely — so every row
+    rendered a placeholder even when the photo was stored.
+    """
+    created = _create(client, leaf)
+    body = client.get("/api/reports", headers=EXPERT).json()
+    row = next(item for item in body["items"] if item["id"] == created["report"]["id"])
+
+    assert row["image_url"] == created["report"]["image_url"]
+    assert row["image_url"].startswith("/api/images/")
+    assert row["confidence"] == created["report"]["confidence"]
+    assert row["confidence"] > 0
+    assert row["reference"]

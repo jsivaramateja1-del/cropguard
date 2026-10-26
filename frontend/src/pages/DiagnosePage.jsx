@@ -18,6 +18,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import PhotoThumbnail from '../components/PhotoThumbnail.jsx'
 import TickerStrip from '../components/TickerStrip.jsx'
 import DiseaseCard from '../components/DiseaseCard.jsx'
+import { useT } from '../i18n/index.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 import AdvisoryPanel from '../components/AdvisoryPanel.jsx'
 import WeatherRiskCard from '../components/WeatherRiskCard.jsx'
@@ -166,6 +167,7 @@ function ReportNumberDialog({ reportId, reference, accessToken }) {
 }
 
 export default function DiagnosePage() {
+  const { t } = useT()
   const [crop, setCrop] = useState('Tomato')
   const [farmerName, setFarmerName] = useState('')
   const [regionName, setRegionName] = useState('')
@@ -359,10 +361,9 @@ export default function DiagnosePage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Check a leaf</CardTitle>
+              <CardTitle>{t('home.title')}</CardTitle>
               <CardDescription className="text-sm leading-relaxed text-secondary-foreground">
-                Photograph one affected leaf, tell us the crop, and CropGuard will screen it and
-                suggest what to do next.
+                {t('home.subtitle')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -383,7 +384,7 @@ export default function DiagnosePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="farmer-name">Your name</Label>
+                <Label htmlFor="farmer-name">{t('home.yourName')}</Label>
                 <Input
                   id="farmer-name"
                   value={farmerName}
@@ -479,7 +480,7 @@ export default function DiagnosePage() {
             <Alert variant="destructive">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
               <div>
-                <p className="font-semibold">This does not look like a crop leaf</p>
+                <p className="font-semibold">{t('result.notALeaf')}</p>
                 <p className="mt-0.5">
                   Only {Math.round(result.plausibility.vegetation_fraction * 100)}% of the photo
                   looks like plant material. The model can only choose from its 16 known

@@ -212,7 +212,7 @@ test.describe('outbreak map', () => {
     await mockApi(page)
     await page.goto('/outbreaks')
 
-    await page.getByRole('combobox').first().selectOption('Rice')
+    await page.getByLabel(/filter by crop/i).selectOption('Rice')
     await expect(page.getByText(/4 reports/)).toBeVisible()
   })
 })
@@ -328,9 +328,10 @@ test.describe('theme and disease grid', () => {
     await page.goto('/diseases')
 
     await expect(page.getByRole('heading', { name: /what cropguard knows/i })).toBeVisible()
-    await expect(page.getByText(/5 conditions/i)).toBeVisible()
+    // The counts are rendered as badges now, so they can be translated.
+    await expect(page.getByText('5 / 5')).toBeVisible()
     // Four of the five mock entries are screenable; the count is derived, not guessed.
-    await expect(page.getByText(/4 screenable/i)).toBeVisible()
+    await expect(page.getByText(/4\s+screenable/i)).toBeVisible()
 
     // Wheat is in the knowledge base but not in the model, and says so.
     await expect(page.getByRole('button', { name: /yellow rust on wheat/i })).toBeVisible()
@@ -343,7 +344,7 @@ test.describe('theme and disease grid', () => {
 
     // And a search matches symptoms, not just names.
     await page.getByLabel(/filter by crop/i).selectOption('')
-    await page.getByLabel(/search diseases/i).fill('mould')
+    await page.getByLabel(/search a symptom/i).fill('mould')
     await expect(page.getByRole('button', { name: /late blight on tomato/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /early blight on tomato/i })).toHaveCount(0)
   })
@@ -356,6 +357,30 @@ test.describe('theme and disease grid', () => {
     await expect(page.getByText(/the most destructive disease/i)).toBeVisible()
     await expect(page.getByRole('link', { name: /check a leaf/i })).toBeVisible()
   })
+})
+
+test.describe('language', () => {
+  test('switches language, persists it, and sets the document language', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: /check a leaf/i })).toBeVisible()
+
+    await page.getByLabel(/^language$/i).selectOption('te')
+
+    // The form heading is Telugu now, and the document declares the language.
+    await expect(page.getByRole('heading', { name: /ఆకును పరిశీలించండి/ })).toBeVisible()
+    expect(await page.locator('html').getAttribute('lang')).toBe('te')
+
+    // It survives a reload.
+    await page.reload()
+    await expect(page.getByRole('heading', { name: /ఆకును పరిశీలించండి/ })).toBeVisible()
+
+    // And switching back restores English.
+    await page.getByLabel(/^language$/i).selectOption('en')
+    await expect(page.getByRole('heading', { name: /check a leaf/i })).toBeVisible()
+  })
+
 })
 
 test.describe('password reset', () => {

@@ -7,6 +7,7 @@
  *
  * Run with:  npm run test:render
  */
+import translationsModule from '../src/i18n/translations.json'
 import { renderToString } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import App from '../src/App.jsx'
@@ -81,11 +82,32 @@ const mapFallback = mapHtml.includes('Loading')
 console.log(`${mapFallback ? 'PASS' : 'FAIL'}  map route lazy-loads behind a fallback`)
 if (!mapFallback) failures += 1
 
+
 console.log(`\nrendered ${html.length} bytes`)
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`)
   process.exit(1)
 }
+// --- translation completeness ------------------------------------------------
+// A half-translated language shows English mid-sentence, which looks broken. Checked here
+// rather than in the browser, because the built bundle does not serve the raw JSON.
+{
+  const english = Object.keys(translationsModule.en || {})
+  const codes = Object.keys(translationsModule)
+  const enough = codes.length >= 11
+  if (!enough) failures += 1
+  console.log(`${enough ? 'PASS' : 'FAIL'}  at least 11 languages are translated (${codes.length})`)
+
+  const incomplete = codes
+    .map((code) => ({ code, missing: english.filter((key) => !(key in translationsModule[code])) }))
+    .filter((entry) => entry.missing.length > 0)
+
+  if (incomplete.length) console.error('incomplete dictionaries:', JSON.stringify(incomplete))
+  const complete = incomplete.length === 0
+  if (!complete) failures += 1
+  console.log(`${complete ? 'PASS' : 'FAIL'}  every language covers all ${english.length} keys`)
+}
+
 console.log('all render checks passed')
 // Exit explicitly: importing axios pulls in Node's undici, which lazily instantiates a
 // WASM HTTP parser during shutdown and can fail on a host with a tight address-space

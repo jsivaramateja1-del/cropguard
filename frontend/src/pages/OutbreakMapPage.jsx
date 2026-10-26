@@ -134,6 +134,7 @@ export default function OutbreakMapPage() {
             <label className="block">
               <span className="mb-1 block text-2xs font-semibold text-muted-foreground">Crop</span>
               <select
+                aria-label="Filter by crop"
                 className="h-10 w-full rounded-lg border border-input bg-card px-2 text-sm"
                 value={crop}
                 onChange={(event) => setCrop(event.target.value)}
@@ -150,6 +151,7 @@ export default function OutbreakMapPage() {
             <label className="block">
               <span className="mb-1 block text-2xs font-semibold text-muted-foreground">Risk</span>
               <select
+                aria-label="Filter by risk"
                 className="h-10 w-full rounded-lg border border-input bg-card px-2 text-sm"
                 value={risk}
                 onChange={(event) => setRisk(event.target.value)}

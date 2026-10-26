@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import ThemeToggle from './components/ThemeToggle.jsx'
+import { LanguageProvider, LanguageSwitcher, useT } from './i18n/index.jsx'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import { Leaf, ShieldAlert } from 'lucide-react'
 import DiagnosePage from './pages/DiagnosePage.jsx'
@@ -29,6 +30,7 @@ import { Button } from './components/ui/button.jsx'
  * is not.
  */
 function Layout({ children }) {
+  const { t } = useT()
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
@@ -56,48 +58,49 @@ function Layout({ children }) {
             <NavLink to="/" end>
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Diagnose
+                  {t('nav.diagnose')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/outbreaks">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Outbreaks
+                  {t('nav.outbreaks')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/follow-up">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Follow up
+                  {t('nav.followup')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/expert">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Expert
+                  {t('nav.expert')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/diseases">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Diseases
+                  {t('nav.diseases')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/account">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
-                  Account
+                  {t('nav.account')}
                 </Button>
               )}
             </NavLink>
           </nav>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-1">
+            <LanguageSwitcher compact />
             <ThemeToggle compact />
           </div>
         </div>
@@ -135,7 +138,7 @@ function Layout({ children }) {
   )
 }
 
-export default function App() {
+function AppShell() {
   return (
     <Layout>
       <Routes>
@@ -204,5 +207,13 @@ export default function App() {
         />
       </Routes>
     </Layout>
+  )
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppShell />
+    </LanguageProvider>
   )
 }

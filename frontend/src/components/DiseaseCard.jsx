@@ -1,5 +1,7 @@
-import { AlertCircle, CheckCircle2, Eye } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Eye, ImageOff } from 'lucide-react'
 import { Badge } from './ui/badge.jsx'
+import { diseaseImage } from '../lib/diseaseImage.js'
+import { useT } from '../i18n/index.jsx'
 
 /**
  * One condition from the advisory knowledge base.
@@ -9,7 +11,9 @@ import { Badge } from './ui/badge.jsx'
  * anything in this grid would be a lie the UI told on the model's behalf.
  */
 export default function DiseaseCard({ disease, onSelect, index = 0 }) {
+  const { t } = useT()
   const healthy = disease.is_healthy
+  const photo = diseaseImage(disease.label)
 
   return (
     <button
@@ -19,6 +23,23 @@ export default function DiseaseCard({ disease, onSelect, index = 0 }) {
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
       aria-label={`${disease.condition} on ${disease.crop}`}
     >
+      {photo ? (
+        <img
+          src={photo}
+          alt={`Reference photo: ${disease.condition} on ${disease.crop}`}
+          loading="lazy"
+          decoding="async"
+          className="-mx-3.5 -mt-3.5 mb-0.5 h-24 w-[calc(100%+1.75rem)] rounded-t-xl object-cover"
+        />
+      ) : (
+        <div className="-mx-3.5 -mt-3.5 mb-0.5 flex h-24 w-[calc(100%+1.75rem)] items-center justify-center rounded-t-xl bg-muted">
+          <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+            <ImageOff size={12} aria-hidden="true" />
+            {t('diseases.noPhoto')}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -49,13 +70,13 @@ export default function DiseaseCard({ disease, onSelect, index = 0 }) {
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         {disease.supported_by_model ? (
-          <Badge variant="low">Screenable</Badge>
+          <Badge variant="low">{t('diseases.screenable')}</Badge>
         ) : (
-          <Badge variant="muted">Advisory only</Badge>
+          <Badge variant="muted">{t('diseases.advisoryOnly')}</Badge>
         )}
         <span className="flex items-center gap-1 text-2xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <Eye size={11} aria-hidden="true" />
-          Details
+          {t('diseases.details')}
         </span>
       </div>
     </button>

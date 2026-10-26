@@ -8,8 +8,11 @@ import { Badge } from '../components/ui/badge.jsx'
 import { Alert } from '../components/ui/alert.jsx'
 import { Input } from '../components/ui/input.jsx'
 import DiseaseCard from '../components/DiseaseCard.jsx'
+import { diseaseImage } from '../lib/diseaseImage.js'
+import { useT } from '../i18n/index.jsx'
 
 export default function DiseasesPage() {
+  const { t } = useT()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -54,11 +57,9 @@ export default function DiseasesPage() {
   return (
     <div className="space-y-4">
       <header className="space-y-1.5">
-        <h1 className="text-xl font-bold">What CropGuard knows</h1>
+        <h1 className="text-xl font-bold">{t('diseases.title')}</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {data
-            ? `${data.total} conditions across ${data.crops.length} crops. The photo model recognises ${screenable} of them; the rest are reference material for experts and for reading a diagnosis.`
-            : 'Reference material for every condition in the advisory database.'}
+          {t('diseases.subtitle')}
         </p>
       </header>
 
@@ -89,10 +90,10 @@ export default function DiseasesPage() {
               />
               <Input
                 className="h-10 pl-9 text-sm"
-                placeholder="Search a symptom, e.g. yellowing"
+                placeholder={t('diseases.search')}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                aria-label="Search diseases"
+                aria-label={t('diseases.search')}
               />
             </div>
             <select
@@ -101,7 +102,7 @@ export default function DiseasesPage() {
               onChange={(event) => setCrop(event.target.value)}
               aria-label="Filter by crop"
             >
-              <option value="">All crops</option>
+              <option value="">{t('diseases.allCrops')}</option>
               {data.crops.map((name) => (
                 <option key={name} value={name}>
                   {name}
@@ -112,10 +113,14 @@ export default function DiseasesPage() {
 
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant="muted" className="tabular">
-              {visible.length} shown
+              {visible.length} / {data.total}
             </Badge>
-            <Badge variant="low">{screenable} screenable</Badge>
-            <Badge variant="muted">{data.total - screenable} advisory only</Badge>
+            <Badge variant="low">
+              {screenable} {t('diseases.screenable')}
+            </Badge>
+            <Badge variant="muted">
+              {data.total - screenable} {t('diseases.advisoryOnly')}
+            </Badge>
           </div>
 
           {visible.length === 0 ? (
@@ -146,6 +151,13 @@ export default function DiseasesPage() {
       {selected ? (
         <Card>
           <CardContent className="space-y-2.5 p-4">
+            {diseaseImage(selected.label) ? (
+              <img
+                src={diseaseImage(selected.label)}
+                alt={`Reference photo: ${selected.condition} on ${selected.crop}`}
+                className="h-40 w-full rounded-lg border border-border object-cover"
+              />
+            ) : null}
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -154,9 +166,9 @@ export default function DiseasesPage() {
                 <h2 className="text-base font-bold">{selected.condition}</h2>
               </div>
               {selected.supported_by_model ? (
-                <Badge variant="low">Screenable</Badge>
+                <Badge variant="low">{t('diseases.screenable')}</Badge>
               ) : (
-                <Badge variant="muted">Advisory only</Badge>
+                <Badge variant="muted">{t('diseases.advisoryOnly')}</Badge>
               )}
             </div>
 

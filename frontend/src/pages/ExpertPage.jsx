@@ -575,7 +575,7 @@ export default function ExpertPage() {
                 </div>
                 <StatusBadge status={report.status} />
               </div>
-              <ConfidenceMeter value={report.confidence} />
+              <ConfidenceMeter confidence={report.confidence} />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-2xs text-muted-foreground">
                   {when(report.created_at)}

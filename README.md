@@ -43,6 +43,8 @@ down is equally honest.
 | Retention | Images purged after 90 days or when the store exceeds 300 MB; reports and audit history are never deleted |
 | Disease reference | `/diseases` — every condition in the advisory base, marked screenable or advisory-only |
 | Dark mode | Light / dark / follow-system, applied before first paint, no flash |
+| Languages | English + 10 Indian languages (Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Kannada, Malayalam, Odia, Punjabi) |
+| Reference photos | One photo per condition from PlantVillage, with attribution (see NOTICE.md) |
 | Security | Anonymous farmers with scoped tokens, bearer-token staff auth, ownership checks, rate limiting, content-based upload validation |
 
 ## Measured, not claimed

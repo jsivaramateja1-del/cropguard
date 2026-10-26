@@ -361,6 +361,10 @@ class ReportSummary(BaseModel):
     predicted_disease: str
     final_diagnosis: Optional[str] = None
     confidence: float
+    # Without this the expert queue had no photo to show, and every row rendered the
+    # placeholder even when the image was stored.
+    image_url: Optional[str] = None
+    reference: Optional[str] = None
     weather_risk_level: Optional[WeatherRiskLevel] = None
     latitude: float
     longitude: float
