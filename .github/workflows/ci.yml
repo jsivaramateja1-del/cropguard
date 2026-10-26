@@ -129,7 +129,11 @@ jobs:
       - name: Install ruff
         run: pip install ruff==0.8.4
       - name: Ruff (backend)
-        run: ruff check backend --config backend/ruff.toml
+        # Run from backend/ so the config's per-file-ignores resolve exactly as they do
+        # locally. Invoking it from the repository root applied different defaults and
+        # reported 21 phantom errors.
+        working-directory: backend
+        run: ruff check .
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
