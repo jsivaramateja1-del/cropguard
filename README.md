@@ -68,7 +68,9 @@ Stated plainly because a demo that hides these is worth less than one that names
   per-expert revocation, no attribution between two experts using the same token.
 - **Uploads are local-disk** unless Cloudinary is configured, so images do not survive a
   redeploy even though the database rows do.
-- **No end-to-end browser tests.** Backend and render-level checks only.
+- **End-to-end tests are mocked by default.** 44 Playwright checks run against a mocked
+  API on desktop and mobile; the live suite exists but is not part of CI, because it
+  depends on a free-tier host that sleeps.
 
 ## Architecture
 
@@ -125,8 +127,15 @@ npm run dev                              # http://localhost:5173
 Tests:
 
 ```bash
-cd backend  && python -m pytest tests -q          # 141 tests
+cd backend  && python -m pytest tests -q          # 183 tests
 cd frontend && npm run test:errors && npm run test:render
+
+# End-to-end (Playwright). The default suite mocks the API and needs no backend.
+cd frontend && npx playwright install chromium && npm run build && npm run test:e2e
+
+# Against the real deployment — the only suite that can catch deployment-level faults
+# such as a missing SPA rewrite or a CORS misconfiguration.
+E2E_BASE_URL=https://cropguard-blush.vercel.app npm run test:e2e:live
 ```
 
 ## Environment

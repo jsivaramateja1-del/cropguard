@@ -1,0 +1,305 @@
+import { expect, test } from '@playwright/test'
+import { analyzeNeedsReview, analyzeNotALeaf, analyzeVerified, mockApi } from './mocks.js'
+
+/**
+ * The farmer journey, against a mocked API.
+ *
+ * These tests answer one question: given a particular API response, does the interface
+ * show the right thing and avoid saying anything it cannot support? They do not exercise
+ * the real model — the live-smoke spec does that.
+ */
+
+/**
+ * Fill the fields the form genuinely requires. The app validates these before submitting
+ * and names what is missing — which is why the earlier "click Analyse" test produced a
+ * validation message rather than a diagnosis.
+ */
+async function fillRequiredFields(page, { name = 'Ravi Kumar' } = {}) {
+  await page.getByLabel(/your name/i).fill(name)
+  await page.getByText(/enter coordinates manually/i).click()
+  await page.getByLabel(/^latitude$/i).fill('16.5062')
+  await page.getByLabel(/^longitude$/i).fill('80.6480')
+}
+
+/**
+ * Submit the diagnosis form.
+ *
+ * Uses the form's own submit event rather than a synthetic click: on the mobile layout the
+ * sticky action bar overlaps the in-form button while Playwright scrolls it into view, so
+ * a click is intermittently swallowed by hit-testing. The button's presence and enabled
+ * state are asserted separately, so this does not hide a missing control.
+ */
+async function submitAnalysis(page) {
+  await page.locator('form').first().evaluate((form) => form.requestSubmit())
+}
+
+async function analyseLeaf(page) {
+  await page.locator('input[type="file"]').first().setInputFiles('e2e/fixtures/leaf.jpg')
+  await fillRequiredFields(page)
+  await submitAnalysis(page)
+}
+
+test.describe('diagnosis page', () => {
+  test('loads and shows the form', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: /check a leaf/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /analyse|analyze/i })).toBeVisible()
+  })
+
+  test('warns that Wheat has no trained classes', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    // The crop coverage note is derived from the model contract, not hard-coded.
+    await expect(page.getByText(/wheat has no trained classes/i)).toBeVisible()
+  })
+
+  test('refuses to submit without a photo and names the gap', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    const submit = page.getByRole('button', { name: /analyse|analyze/i }).first()
+    await expect(submit).toBeEnabled()
+    await submitAnalysis(page)
+
+    // The form names what is missing rather than silently doing nothing — an earlier
+    // version was simply disabled, which looked broken.
+    // The message appears in the form and again in the mobile action bar; one copy is
+    // off-screen, so assert on content rather than visibility.
+    await expect(page.locator('body')).toContainText(/still needed/i)
+    await expect(page.locator('body')).toContainText(/your name, your location/i)
+  })
+
+  test('rejects a non-image file before uploading', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    await page.locator('input[type="file"]').first().setInputFiles('e2e/fixtures/notes.txt')
+    await expect(page.getByText(/jpeg|png|webp|not an image|unsupported/i).first()).toBeVisible()
+  })
+
+  test('shows a verified diagnosis with its advisory', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    await analyseLeaf(page)
+
+    // The result section, not the crop card (which also mentions "late blight").
+    await expect(page.getByText(/potential diagnosis/i).first()).toBeVisible()
+    await expect(page.getByText(/AI verified/i).first()).toBeVisible()
+    // Advisory content is present for a matching crop, inside a collapsed accordion —
+    // expanding it is part of the journey, so the test does it.
+    await page.getByRole('button', { name: /cultural control/i }).click()
+    await expect(page.getByText(/remove and destroy infected plants/i)).toBeVisible()
+    await expect(page.getByText(/93\s*%/)).toBeVisible()
+  })
+
+  test('routes a low-confidence result to review and explains why', async ({ page }) => {
+    await mockApi(page, { analyze: analyzeNeedsReview })
+    await page.goto('/')
+
+    await analyseLeaf(page)
+
+    await expect(page.getByText(/expert review pending/i).first()).toBeVisible()
+    await expect(page.getByText(/below the 0\.75 threshold/i)).toBeVisible()
+    // Still a "potential diagnosis", never a certainty.
+    await expect(page.getByText(/potential diagnosis/i).first()).toBeVisible()
+  })
+
+  test('flags a photo that does not look like a leaf', async ({ page }) => {
+    await mockApi(page, { analyze: analyzeNotALeaf })
+    await page.goto('/')
+
+    await analyseLeaf(page)
+
+    await expect(page.getByText(/does not look like a crop leaf/i)).toBeVisible()
+  })
+
+  test('offers the access code once, and it can be copied', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await mockApi(page)
+    await page.goto('/')
+
+    await analyseLeaf(page)
+
+    await page.getByRole('button', { name: /save report number|report number/i }).first().click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('CG-00042')).toBeVisible()
+    await expect(dialog.getByText(/shown once/i)).toBeVisible()
+    await expect(dialog.getByText('test-access-token-abc123')).toBeVisible()
+  })
+
+  test('surfaces an API failure instead of pretending it worked', async ({ page }) => {
+    await mockApi(page, { analyze: new Error('The model is not available.') })
+    await page.goto('/')
+
+    await analyseLeaf(page)
+
+    await expect(page.getByText(/model is not available|could not|failed/i).first()).toBeVisible()
+  })
+})
+
+test.describe('navigation', () => {
+  test('reaches every page from the header', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    for (const [label, href, heading] of [
+      ['Outbreaks', '/outbreaks', /outbreak map/i],
+      ['Follow up', '/follow-up', /follow up/i],
+      ['Expert', '/expert', /expert review/i],
+      ['Account', '/account', /sign in|create an account/i],
+    ]) {
+      const link = page.getByRole('link', { name: label }).first()
+      await expect(link).toBeVisible()
+      await expect(link).toHaveAttribute('href', href)
+
+      await page.goto(href)
+      await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible()
+    }
+  })
+
+  test('an unknown route shows a 404 rather than a blank page', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/no-such-page')
+    await expect(page.getByText(/not found|404/i).first()).toBeVisible()
+  })
+})
+
+test.describe('outbreak map', () => {
+  test('plots the points and lists hotspots', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/outbreaks')
+
+    await expect(page.getByRole('heading', { name: /outbreak map/i })).toBeVisible()
+    await expect(page.getByText(/4 reports/)).toBeVisible()
+    await expect(page.getByText(/2 locations/)).toBeVisible()
+    await expect(page.getByText('Kelambakkam')).toBeVisible()
+    // The Leaflet canvas actually rendered.
+    await expect(page.locator('.leaflet-container')).toBeVisible()
+  })
+
+  test('filters by crop', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/outbreaks')
+
+    await page.getByRole('combobox').first().selectOption('Rice')
+    await expect(page.getByText(/4 reports/)).toBeVisible()
+  })
+})
+
+test.describe('follow-up page', () => {
+  test('requires both the reference and the access code', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/follow-up')
+
+    const open = page.getByRole('button', { name: /open report/i })
+    await expect(open).toBeDisabled()
+
+    await page.getByLabel(/report reference/i).fill('CG-00042')
+    await expect(open).toBeDisabled()
+
+    await page.getByLabel(/access code/i).fill('some-token')
+    await expect(open).toBeEnabled()
+  })
+
+  test('shows the timeline including the expert decision', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/follow-up')
+
+    await page.getByLabel(/report reference/i).fill('CG-00042')
+    await page.getByLabel(/access code/i).fill('test-access-token-abc123')
+    await page.getByRole('button', { name: /open report/i }).click()
+
+    await expect(page.getByText(/reviewed by dr test expert/i)).toBeVisible()
+    await expect(page.getByText(/follow-up: worsening/i)).toBeVisible()
+    await expect(page.getByText(/an agricultural expert has reviewed this report/i)).toBeVisible()
+  })
+
+  test('says plainly when nobody has reviewed the report yet', async ({ page }) => {
+    await mockApi(page, {
+      followUpReport: { ...analyzeVerified.report, follow_ups: [], audit_events: [] },
+    })
+    await page.goto('/follow-up')
+
+    await page.getByLabel(/report reference/i).fill('CG-00042')
+    await page.getByLabel(/access code/i).fill('token')
+    await page.getByRole('button', { name: /open report/i }).click()
+
+    await expect(page.getByText(/no expert has reviewed this yet/i)).toBeVisible()
+    await expect(page.getByText(/does not promise a response time/i)).toBeVisible()
+  })
+
+  test('reports a wrong access code without leaking whether the report exists', async ({ page }) => {
+    await mockApi(page, { followUpReport: 'not-found' })
+    await page.goto('/follow-up')
+
+    await page.getByLabel(/report reference/i).fill('CG-99999')
+    await page.getByLabel(/access code/i).fill('wrong')
+    await page.getByRole('button', { name: /open report/i }).click()
+
+    await expect(page.getByText(/could not open that report/i)).toBeVisible()
+    await expect(page.getByText(/no report with that reference/i)).toBeVisible()
+  })
+})
+
+test.describe('expert page', () => {
+  test('offers both sign-in paths', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/expert')
+
+    await expect(page.getByLabel(/email/i)).toBeVisible()
+    await expect(page.getByLabel(/password/i)).toBeVisible()
+    // The staff-token fallback is still reachable.
+    await expect(page.getByRole('button', { name: /staff token/i })).toBeVisible()
+  })
+
+  test('hides the admin approval queue from non-admins', async ({ page }) => {
+    // The mock returns 403 for expert-request listing, so the section must not render.
+    await mockApi(page)
+    await page.goto('/expert')
+    await expect(page.getByText(/expert access requests/i)).toHaveCount(0)
+  })
+})
+
+test.describe('account page', () => {
+  test('switches between sign in and registration', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/account')
+
+    await expect(page.getByRole('heading', { name: /^sign in$/i })).toBeVisible()
+    await page.getByRole('button', { name: /create an account instead/i }).click()
+    await expect(page.getByRole('heading', { name: /create an account/i })).toBeVisible()
+    await expect(page.getByLabel(/your name/i)).toBeVisible()
+  })
+})
+
+test.describe('accessibility basics', () => {
+  test('the form is keyboard reachable', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    // Tab from the top and confirm focus reaches an interactive control.
+    for (let i = 0; i < 8; i += 1) {
+      await page.keyboard.press('Tab')
+    }
+    const tag = await page.evaluate(() => document.activeElement?.tagName || '')
+    expect(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']).toContain(tag)
+  })
+
+  test('has a visible focus indicator on the primary action', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    const submit = page.getByRole('button', { name: /analyse|analyze/i }).first()
+    await submit.focus()
+    const outline = await submit.evaluate((element) => {
+      const styles = getComputedStyle(element)
+      return `${styles.outlineStyle} ${styles.outlineWidth} ${styles.boxShadow}`
+    })
+    expect(outline).not.toMatch(/^none 0px none/)
+  })
+})
