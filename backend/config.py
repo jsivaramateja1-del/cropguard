@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- email (Brevo) ---------------------------------------------------------
+    # Transactional email for password resets. Unset means nothing is sent, and the API
+    # says so rather than pretending an email went out.
+    brevo_api_key: str = ""
+    email_from: str = ""
+    email_from_name: str = "CropGuard"
+    password_reset_minutes: int = 30
+    # Base URL used to build links inside emails (the frontend, not the API).
+    public_app_url: str = ""
+
     # --- deployment identity ---------------------------------------------------
     # Render sets RENDER_GIT_COMMIT on every deploy; the local fallbacks let a developer
     # see which build is running. A commit SHA is public information (the repository is

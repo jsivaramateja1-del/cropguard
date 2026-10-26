@@ -35,6 +35,7 @@ down is equally honest.
 | Reports | Persisted in Supabase Postgres; public reference `CG-00042` plus a one-time access code |
 | Expert review | Queue, confirm/correct with notes, append-only audit trail |
 | Accounts | Farmer self-registration, bcrypt passwords, JWT sessions, revocation |
+| Password reset | Brevo email, single-use hashed token, 30-minute expiry, signs out all devices |
 | Expert approval | Farmers apply; an admin approves, which promotes the account and invalidates old tokens |
 | Follow-up | Reference + access code, condition status, optional photo, full timeline |
 | Outbreak map | Public `/api/outbreaks` with coordinates rounded to ~1 km; Leaflet, lazy-loaded |
@@ -169,6 +170,10 @@ pip-audit -r backend/requirements-deploy.txt --no-deps --disable-pip
 | `MODEL_PATH` | no | Path to the ONNX artifact |
 | `CONFIDENCE_THRESHOLD` | no (0.75) | Below this, a report goes to expert review |
 | `OOD_CONFIDENCE_FLOOR` | no (0.88) | Below this, the photo may not be a leaf |
+| `SECRET_KEY` | yes in production | Signs session tokens. Unset means a random key per process, so restarts sign everyone out |
+| `BREVO_API_KEY` | for password reset | Brevo transactional email |
+| `EMAIL_FROM` | for password reset | Must be a sender verified in Brevo |
+| `PUBLIC_APP_URL` | for password reset | Frontend base URL used in email links |
 | `CLOUDINARY_*` | optional | Durable image storage |
 
 ## API

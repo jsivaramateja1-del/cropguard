@@ -291,6 +291,67 @@ test.describe('expert page', () => {
   })
 })
 
+test.describe('password reset', () => {
+  test('the account page offers a reset link and confirms without revealing accounts', async ({
+    page,
+  }) => {
+    await mockApi(page)
+    await page.goto('/account')
+
+    await page.getByRole('button', { name: /forgot your password/i }).click()
+    await page.getByLabel(/email for the reset link/i).fill('someone@example.com')
+    await page.getByRole('button', { name: /send reset link/i }).click()
+
+    // Same wording whether or not the address exists.
+    await expect(page.getByText(/check your inbox/i)).toBeVisible()
+    await expect(page.getByText(/if that address has an account/i)).toBeVisible()
+  })
+
+  test('a link without a token explains itself instead of showing a form', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/reset-password')
+
+    await expect(page.getByText(/missing its token/i)).toBeVisible()
+    await expect(page.getByRole('button', { name: /set new password/i })).toHaveCount(0)
+  })
+
+  test('mismatched passwords are caught before submitting', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/reset-password?token=good-token-value')
+
+    await page.getByLabel(/^new password$/i).fill('a-long-password-1')
+    await page.getByLabel(/confirm password/i).fill('a-different-one-2')
+
+    await expect(page.getByText(/do not match/i).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /set new password/i })).toBeDisabled()
+  })
+
+  test('a valid token sets the password and signs the user out', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/reset-password?token=good-token-value')
+
+    await page.getByLabel(/^new password$/i).fill('a-long-password-1')
+    await page.getByLabel(/confirm password/i).fill('a-long-password-1')
+    await page.getByRole('button', { name: /set new password/i }).click()
+
+    await expect(page.getByRole('heading', { name: /password changed/i })).toBeVisible()
+    await expect(page.getByText(/signed out/i)).toBeVisible()
+    await expect(page.getByRole('link', { name: /^sign in$/i })).toBeVisible()
+  })
+
+  test('an expired token is reported clearly', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/reset-password?token=expired-token')
+
+    await page.getByLabel(/^new password$/i).fill('a-long-password-1')
+    await page.getByLabel(/confirm password/i).fill('a-long-password-1')
+    await page.getByRole('button', { name: /set new password/i }).click()
+
+    await expect(page.getByText(/invalid or has expired/i)).toBeVisible()
+    await expect(page.getByText(/request a new one/i).first()).toBeVisible()
+  })
+})
+
 test.describe('stored photos', () => {
   test('the follow-up page shows the leaf and the follow-up photo', async ({ page }) => {
     await mockApi(page, {

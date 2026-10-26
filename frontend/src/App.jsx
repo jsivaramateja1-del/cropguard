@@ -16,6 +16,7 @@ const OutbreakMapPage = lazy(() => import('./pages/OutbreakMapPage.jsx'))
 const ExpertPage = lazy(() => import('./pages/ExpertPage.jsx'))
 const FollowUpPage = lazy(() => import('./pages/FollowUpPage.jsx'))
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage.jsx'))
 import { Button } from './components/ui/button.jsx'
 
 /**
@@ -121,6 +122,14 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<DiagnosePage />} />
+        <Route
+          path="/reset-password"
+          element={
+            <Suspense fallback={<RouteLoading />}>
+              <ResetPasswordPage />
+            </Suspense>
+          }
+        />
         <Route
           path="/account"
           element={

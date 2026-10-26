@@ -129,10 +129,30 @@ themselves; a rejected applicant may apply again.
 `audit_events.report_id` is nullable so staff actions with no report — approving an
 expert, creating an account — can be audited too.
 
+## Password reset
+
+Email delivery is Brevo (HTTPS API, no SDK, free tier).
+
+| Concern | How it is handled |
+|---|---|
+| Token | 32 random bytes, stored only as a SHA-256 hash, single use |
+| Expiry | 30 minutes (`PASSWORD_RESET_MINUTES`) |
+| One live link | Requesting again marks the previous token used, so only the newest link works |
+| Enumeration | `POST /api/auth/forgot-password` answers identically for known and unknown addresses |
+| Abuse | The same throttle as sign-in, per email and per client |
+| Sessions | A successful reset bumps `token_version`, signing out every device |
+| Not configured | Returns `503` and says email is unavailable — it never claims a mail was sent |
+| Logs | The reset link is never logged; only the outcome |
+
+The email is a single 600px table with inline styles, because email clients strip `<style>`
+blocks and ignore modern layout. It carries the product name, a one-line description of
+what CropGuard does, the expiry, a copyable fallback link, and a "did not request this"
+note.
+
 ## Known limitations — stated rather than hidden
 
-1. **No password reset by email.** There is no mail provider configured, so a forgotten
-   password means an admin resets it. Adding one needs an SMTP or Resend/SES account.
+1. **Password reset needs Brevo configured.** Without `BREVO_API_KEY` and a verified
+   `EMAIL_FROM`, the endpoint returns 503 rather than failing silently.
 2. **The legacy shared staff token still works.** Kept deliberately so the deployed expert
    page does not break; it should be removed once every expert has an account.
 3. **Rate limiting is per process.** With several workers the effective limit multiplies.

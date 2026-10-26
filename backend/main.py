@@ -34,6 +34,8 @@ from sqlalchemy.orm import Session, selectinload
 import advisory as advisory_module
 import auth
 import database
+import email_templates
+import emailer
 import schemas
 import security
 import storage
@@ -53,6 +55,7 @@ from models import (
     ExpertApplication,
     FollowUp,
     FollowUpCondition,
+    PasswordReset,
     Report,
     ReportImage,
     ReportStatus,
@@ -593,7 +596,9 @@ def health() -> dict:
             },
             "auth": {
                 "staff_configured": security.staff_auth_configured(),
+                "accounts": True,
             },
+            "email": emailer.email_status(),
         },
         "thresholds": {
             "confidence": settings.confidence_threshold,
@@ -879,6 +884,160 @@ def create_staff_account(
     return schemas.UserOut.model_validate(user)
 
 
+
+
+
+
+# ---------------------------------------------------------------------------
+# Password reset
+# ---------------------------------------------------------------------------
+def _public_app_url() -> str:
+    """Where the reset link should point: the frontend, never the API."""
+    configured = settings.public_app_url.strip()
+    if configured:
+        return configured.rstrip("/")
+    origins = settings.cors_origins
+    if origins:
+        return origins[0].rstrip("/")
+    return ""
+
+
+@app.post(
+    "/api/auth/forgot-password",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password reset email",
+)
+def forgot_password(
+    payload: schemas.ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Always answers the same way, whether or not the address is registered.
+
+    A different response for a known address would turn this endpoint into an account
+    enumeration oracle, so the caller learns nothing either way. The real outcome is in
+    the logs.
+    """
+    email = auth.normalise_email(payload.email)
+    throttle = auth.login_throttle()
+    key = f"reset:{email}"
+    key_client = f"reset-client:{security.client_key(request)}"
+
+    for throttle_key in (key, key_client):
+        blocked, retry_after = throttle.blocked(throttle_key)
+        if blocked:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many reset requests. Wait a few minutes and try again.",
+                headers={"Retry-After": str(retry_after)},
+            )
+    throttle.record_failure(key)
+    throttle.record_failure(key_client)
+
+    generic = {
+        "status": "accepted",
+        "detail": (
+            "If that address has an account, a reset link is on its way. The link expires "
+            f"in {settings.password_reset_minutes} minutes."
+        ),
+    }
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if user is None or not user.is_active:
+        logger.info("password reset requested for an unknown or inactive address")
+        return generic
+
+    if not emailer.email_configured():
+        # Honest failure: do not claim an email was sent when it cannot be.
+        logger.error("password reset requested but email delivery is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Password reset is unavailable because email delivery is not configured "
+                "on the server. Ask an administrator to reset your password."
+            ),
+        )
+
+    token = security.new_report_token()
+    db.add(
+        PasswordReset(
+            user_id=user.id,
+            token_hash=security.hash_token(token),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.password_reset_minutes),
+        )
+    )
+    # Any earlier outstanding links stop working: one live reset per account.
+    db.execute(
+        update(PasswordReset)
+        .where(PasswordReset.user_id == user.id)
+        .where(PasswordReset.used_at.is_(None))
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    db.commit()
+
+    app_url = _public_app_url()
+    reset_url = f"{app_url}/reset-password?token={token}"
+    subject, html, text = email_templates.password_reset_email(
+        reset_url=reset_url,
+        expires_minutes=settings.password_reset_minutes,
+        user_name=user.display_name,
+        app_url=app_url,
+    )
+    result = emailer.send_email(user.email, subject, html, text)
+    if not result.delivered:
+        logger.error("reset email was not delivered: %s", result.detail)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "The reset email could not be sent. Ask an administrator to reset your "
+                "password."
+            ),
+        )
+
+    logger.info("password reset email sent for user %s", user.id)
+    return generic
+
+
+@app.post("/api/auth/reset-password", summary="Set a new password with a reset token")
+def reset_password(
+    payload: schemas.ResetPasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Redeem a reset token exactly once."""
+    problem = auth.password_problem(payload.new_password)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem)
+
+    token_hash = security.hash_token(payload.token.strip())
+    record = db.execute(
+        select(PasswordReset).where(PasswordReset.token_hash == token_hash)
+    ).scalar_one_or_none()
+
+    invalid = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="This reset link is invalid or has expired. Request a new one.",
+    )
+    if record is None or record.used_at is not None:
+        raise invalid
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise invalid
+
+    user = db.get(User, record.user_id)
+    if user is None or not user.is_active:
+        raise invalid
+
+    user.password_hash = auth.hash_password(payload.new_password)
+    # Every existing session is signed out; the reset proves control of the inbox, not of
+    # the old password.
+    user.token_version += 1
+    record.used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info("password reset completed for user %s", user.id)
+    return {"status": "password_reset", "signed_out_everywhere": True}
 
 
 # ---------------------------------------------------------------------------

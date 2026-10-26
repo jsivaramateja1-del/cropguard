@@ -347,6 +347,31 @@ export async function logoutAccount() {
   }
 }
 
+/** Ask for a reset email. The server answers the same way for unknown addresses. */
+export async function forgotPassword(email) {
+  try {
+    const { data } = await api.post('/api/auth/forgot-password', { email })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** Redeem a reset token and set a new password. */
+export async function resetPassword({ token, newPassword }) {
+  try {
+    const { data } = await api.post('/api/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    })
+    // Every session was revoked server-side, so drop the local token too.
+    setAuthToken(null)
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
 export async function changePassword({ currentPassword, newPassword }) {
   try {
     const { data } = await api.post('/api/auth/password', {

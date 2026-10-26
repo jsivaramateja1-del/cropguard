@@ -638,3 +638,207 @@ def test_an_expert_cannot_approve_requests(client):
 def test_approving_an_unknown_request_is_a_clean_404(client):
     response = client.post("/api/expert-requests/9999/approve", json={}, headers=ADMIN)
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Password reset (Brevo email)
+# ---------------------------------------------------------------------------
+def _configure_email(monkeypatch, sender="no-reply@cropguard.test"):
+    """Pretend Brevo is configured, so the flow runs without a real API key."""
+    from config import settings
+
+    monkeypatch.setattr(settings, "brevo_api_key", "test-key", raising=False)
+    monkeypatch.setattr(settings, "email_from", sender, raising=False)
+    monkeypatch.setattr(settings, "public_app_url", "https://cropguard.test", raising=False)
+
+
+def _capture_email(monkeypatch):
+    """Replace the Brevo call and record what would have been sent."""
+    sent = []
+
+    class Result:
+        delivered = True
+        detail = "accepted"
+        message_id = "test"
+
+        def as_dict(self):
+            return {"delivered": True, "detail": "accepted"}
+
+    def fake_send(to_address, subject, html, text):
+        sent.append({"to": to_address, "subject": subject, "html": html, "text": text})
+        return Result()
+
+    import emailer
+
+    monkeypatch.setattr(emailer, "send_email", fake_send)
+    return sent
+
+
+def _reset_token_from(sent, index: int = -1) -> str:
+    """Extract the token from a captured email. Defaults to the most recent one."""
+    import re
+
+    match = re.search(r"token=([A-Za-z0-9_\-]+)", sent[index]["text"])
+    assert match, "the email should contain a reset link"
+    return match.group(1)
+
+
+def test_forgot_password_sends_a_branded_email(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+
+    response = client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    assert response.status_code == 202
+    assert len(sent) == 1
+    assert sent[0]["to"] == "ravi@example.com"
+    assert sent[0]["subject"] == "Reset your CropGuard password"
+
+    html = sent[0]["html"]
+    # The email carries the product name and a description, and a working link.
+    assert "CropGuard" in html
+    assert "What is CropGuard?" in html
+    assert "crop disease screening" in html.lower()
+    assert "reset-password?token=" in html
+    assert "30 minutes" in html
+    # And a plain-text alternative for clients that do not render HTML.
+    assert "Choose a new password" in sent[0]["text"] or "reset your password" in sent[0]["text"].lower()
+
+
+def test_forgot_password_does_not_reveal_whether_the_account_exists(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    _capture_email(monkeypatch)
+
+    known = client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    unknown = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
+    assert known.status_code == unknown.status_code == 202
+    assert known.json()["detail"] == unknown.json()["detail"]
+
+
+def test_reset_link_sets_a_new_password_and_signs_sessions_out(client, monkeypatch):
+    token = _register(client).json()["access_token"]
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    reset_token = _reset_token_from(sent)
+
+    response = client.post(
+        "/api/auth/reset-password",
+        json={"token": reset_token, "new_password": "a-brand-new-password-1"},
+    )
+    assert response.status_code == 200
+    assert response.json()["signed_out_everywhere"] is True
+
+    # Old sessions are dead, old password rejected, new one works.
+    assert client.get("/api/auth/me", headers=_auth(token)).status_code == 401
+    assert client.post(
+        "/api/auth/login", json={"email": "ravi@example.com", "password": PASSWORD}
+    ).status_code == 401
+    assert client.post(
+        "/api/auth/login", json={"email": "ravi@example.com", "password": "a-brand-new-password-1"}
+    ).status_code == 200
+
+
+def test_reset_token_is_single_use(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    reset_token = _reset_token_from(sent)
+
+    assert client.post(
+        "/api/auth/reset-password",
+        json={"token": reset_token, "new_password": "first-new-password-1"},
+    ).status_code == 200
+    second = client.post(
+        "/api/auth/reset-password",
+        json={"token": reset_token, "new_password": "second-new-password-2"},
+    )
+    assert second.status_code == 400
+    assert "invalid or has expired" in second.json()["detail"]
+
+
+def test_requesting_again_invalidates_the_previous_link(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    first = _reset_token_from(sent, 0)
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    second = _reset_token_from(sent, 1)
+    assert first != second
+
+    # The older link must not work any more.
+    assert client.post(
+        "/api/auth/reset-password",
+        json={"token": first, "new_password": "another-password-here-1"},
+    ).status_code == 400
+
+
+def test_expired_token_is_refused(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    reset_token = _reset_token_from(sent)
+
+    with database.SessionLocal() as session:
+        record = session.query(models.PasswordReset).one()
+        record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        session.commit()
+
+    response = client.post(
+        "/api/auth/reset-password",
+        json={"token": reset_token, "new_password": "another-password-here-1"},
+    )
+    assert response.status_code == 400
+
+
+def test_reset_token_is_stored_only_as_a_hash(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    reset_token = _reset_token_from(sent)
+
+    with database.SessionLocal() as session:
+        record = session.query(models.PasswordReset).one()
+        assert record.token_hash != reset_token
+        import security
+
+        assert record.token_hash == security.hash_token(reset_token)
+
+
+def test_weak_new_password_is_refused(client, monkeypatch):
+    _register(client)
+    _configure_email(monkeypatch)
+    sent = _capture_email(monkeypatch)
+    client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    reset_token = _reset_token_from(sent)
+
+    response = client.post(
+        "/api/auth/reset-password", json={"token": reset_token, "new_password": "short"}
+    )
+    assert response.status_code == 422
+
+
+def test_reset_says_so_when_email_is_not_configured(client):
+    """No fake success: without Brevo configured, the API admits it cannot send."""
+    _register(client)
+    response = client.post("/api/auth/forgot-password", json={"email": "ravi@example.com"})
+    assert response.status_code == 503
+    assert "email delivery is not configured" in response.json()["detail"]
+
+
+def test_forgot_password_is_rate_limited(client, monkeypatch):
+    _configure_email(monkeypatch)
+    _capture_email(monkeypatch)
+    for _ in range(9):
+        client.post("/api/auth/forgot-password", json={"email": "spam@example.com"})
+    blocked = client.post("/api/auth/forgot-password", json={"email": "spam@example.com"})
+    assert blocked.status_code == 429

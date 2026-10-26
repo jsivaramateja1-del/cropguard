@@ -310,6 +310,33 @@ export async function mockApi(page, overrides = {}) {
       body: JSON.stringify({ detail: 'Sign in to use this endpoint.' }),
     }),
   )
+  await page.route('**/api/auth/forgot-password', (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'accepted',
+        detail: 'If that address has an account, a reset link is on its way.',
+      }),
+    }),
+  )
+  await page.route('**/api/auth/reset-password', (route) => {
+    const body = route.request().postDataJSON() || {}
+    if (body.token === 'expired-token') {
+      return route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail: 'This reset link is invalid or has expired. Request a new one.',
+        }),
+      })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'password_reset', signed_out_everywhere: true }),
+    })
+  })
   await page.route('**/api/expert-requests**', (route) =>
     route.fulfill({
       status: 403,

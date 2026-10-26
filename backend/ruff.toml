@@ -25,3 +25,8 @@ ignore = [
 # Tests assert on long call chains and use fixtures as arguments; strict import order and
 # line length add noise without catching anything.
 "tests/*" = ["E501"]
+
+# Email HTML is a table layout with fully inline styles, because email clients strip
+# <style> blocks. Those style attributes are long by nature; wrapping them to satisfy a
+# line limit would make the markup harder to read, not better.
+"email_templates.py" = ["E501"]

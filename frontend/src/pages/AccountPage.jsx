@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Clock,
   LogIn,
+  MailCheck,
   LogOut,
   ShieldCheck,
   Trash2,
@@ -15,6 +16,7 @@ import {
   deleteAccount,
   fetchMe,
   fetchMyExpertRequests,
+  forgotPassword,
   getAuthToken,
   loginAccount,
   logoutAccount,
@@ -51,6 +53,10 @@ export default function AccountPage() {
   const [affiliation, setAffiliation] = useState('')
   const [requestRegion, setRequestRegion] = useState('')
   const [requesting, setRequesting] = useState(false)
+  // Forgot-password state: 'idle' | 'form' | 'sent'
+  const [resetStage, setResetStage] = useState('idle')
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetBusy, setResetBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -248,6 +254,72 @@ export default function AccountPage() {
                 {mode === 'register' ? 'Create account' : 'Sign in'}
               </Button>
             </form>
+
+            {mode === 'signin' ? (
+              <button
+                type="button"
+                className="mt-3 w-full text-center text-2xs text-muted-foreground underline"
+                onClick={() => {
+                  setResetStage(resetStage === 'idle' ? 'form' : 'idle')
+                  setResetEmail(email)
+                  setError(null)
+                  setNotice(null)
+                }}
+              >
+                {resetStage === 'idle' ? 'Forgot your password?' : 'Back to sign in'}
+              </button>
+            ) : null}
+
+            {resetStage === 'form' ? (
+              <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
+                <form
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setResetBusy(true)
+                    setError(null)
+                    try {
+                      await forgotPassword(resetEmail)
+                      setResetStage('sent')
+                    } catch (resetError) {
+                      setError(resetError)
+                    } finally {
+                      setResetBusy(false)
+                    }
+                  }}
+                  className="space-y-2"
+                >
+                  <Label htmlFor="reset-email">Email for the reset link</Label>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    className="mt-1"
+                    value={resetEmail}
+                    onChange={(event) => setResetEmail(event.target.value)}
+                  />
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    className="w-full"
+                    disabled={resetBusy || !resetEmail.trim()}
+                  >
+                    {resetBusy ? 'Sending…' : 'Send reset link'}
+                  </Button>
+                </form>
+              </div>
+            ) : null}
+
+            {resetStage === 'sent' ? (
+              <Alert className="mt-3">
+                <MailCheck size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-semibold">Check your inbox</p>
+                  <p className="mt-0.5">
+                    If that address has an account, a reset link is on its way. It expires in
+                    30 minutes.
+                  </p>
+                </div>
+              </Alert>
+            ) : null}
 
             <button
               type="button"
