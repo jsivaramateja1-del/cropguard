@@ -260,6 +260,20 @@ class ExpertApplicationListOut(BaseModel):
     applications: List[ExpertApplicationOut]
 
 
+class AlertSubscribeRequest(BaseModel):
+    email: EmailStr
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    radius_km: Optional[float] = Field(default=None, gt=0, le=50)
+    crops: List[str] = Field(default_factory=list)
+    language: str = Field(default="en", max_length=8)
+
+
+class AlertSubscribeResponse(BaseModel):
+    status: str
+    detail: str
+
+
 class DiseaseCardOut(BaseModel):
     """One entry of the advisory knowledge base, shaped for a card in the UI.
 

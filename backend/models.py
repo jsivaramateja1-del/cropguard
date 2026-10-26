@@ -245,6 +245,35 @@ class User(Base):
     reports: Mapped[List["Report"]] = relationship(back_populates="owner_user")
 
 
+class AlertSubscription(Base):
+    """An email address that asked to be told about outbreaks nearby.
+
+    Double opt-in: `confirmed_at` stays null until the confirmation link is clicked, so an
+    address cannot be signed up by a third party. `unsubscribe_token` is in every message
+    and deleting the row is all an unsubscribe does.
+    """
+
+    __tablename__ = "alert_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    radius_km: Mapped[float] = mapped_column(Float, nullable=False, default=10.0)
+    # Empty list means every crop the model knows.
+    crops: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    language: Mapped[str] = mapped_column(String(8), nullable=False, default="en")
+    confirm_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    unsubscribe_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_notified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class PasswordReset(Base):
     """A single-use password reset token.
 

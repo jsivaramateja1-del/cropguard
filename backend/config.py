@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- outbreak alerts -------------------------------------------------------
+    # Email warnings to farmers who subscribed to a radius around their fields.
+    alerts_enabled: bool = True
+    # How long before the same subscriber can be told about the same area again.
+    alert_cooldown_hours: int = 24
+    # A subscriber may pick any radius, but not the whole country.
+    alert_max_radius_km: float = 50.0
+    alert_default_radius_km: float = 10.0
+
     # --- image retention -------------------------------------------------------
     # Uploaded photos are kept in the database, which has a finite quota (500 MB on the
     # free Supabase tier). Reports are kept indefinitely because they feed the outbreak

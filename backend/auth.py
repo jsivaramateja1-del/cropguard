@@ -153,6 +153,10 @@ class LoginThrottle:
         self.window = window_seconds
         self._failures: Dict[str, list] = {}
 
+    def reset_all(self) -> None:
+        """Forget every key. Used by tests, and to clear a lockout after a bad burst."""
+        self._failures.clear()
+
     def _recent(self, key: str) -> list:
         now = time.monotonic()
         recent = [stamp for stamp in self._failures.get(key, []) if now - stamp < self.window]

@@ -34,6 +34,7 @@ down is equally honest.
 | Advisory | 21-entry knowledge base, no invented dosages, viruses and mites flagged as not chemically treatable |
 | Reports | Persisted in Supabase Postgres; public reference `CG-00042` plus a one-time access code |
 | Expert review | Queue, confirm/correct with notes, append-only audit trail |
+| Outbreak alerts | Email warnings to subscribers within a chosen radius: double opt-in, one alert per disease per day |
 | Accounts | Farmer self-registration, bcrypt passwords, JWT sessions, revocation |
 | Password reset | Brevo email, single-use hashed token, 30-minute expiry, signs out all devices |
 | Expert approval | Farmers apply; an admin approves, which promotes the account and invalidates old tokens |

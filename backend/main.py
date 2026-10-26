@@ -32,6 +32,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 import advisory as advisory_module
+import alerts
 import auth
 import database
 import email_templates
@@ -52,6 +53,7 @@ from inference import (
 )
 from models import (
     CROP_TYPES,
+    AlertSubscription,
     AuditEvent,
     ExpertApplication,
     FollowUp,
@@ -1079,6 +1081,111 @@ def reset_password(
     return {"status": "password_reset", "signed_out_everywhere": True}
 
 
+
+
+# ---------------------------------------------------------------------------
+# Outbreak alerts by email
+# ---------------------------------------------------------------------------
+@app.post(
+    "/api/alerts/subscribe",
+    response_model=schemas.AlertSubscribeResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ask for outbreak alerts near a point",
+)
+def subscribe_alerts(
+    payload: schemas.AlertSubscribeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.AlertSubscribeResponse:
+    """Double opt-in: nothing is sent to this address until the link is clicked."""
+    email = auth.normalise_email(payload.email)
+    throttle = auth.login_throttle()
+    for key in (f"alert:{email}", f"alert-client:{security.client_key(request)}"):
+        blocked, retry_after = throttle.blocked(key)
+        if blocked:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many requests. Wait a few minutes and try again.",
+                headers={"Retry-After": str(retry_after)},
+            )
+    throttle.record_failure(f"alert:{email}")
+    throttle.record_failure(f"alert-client:{security.client_key(request)}")
+
+    generic = schemas.AlertSubscribeResponse(
+        status="accepted",
+        detail="Check that inbox for a confirmation link. Alerts start after you confirm.",
+    )
+
+    if not emailer.email_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email is not configured on the server, so alerts cannot be sent.",
+        )
+
+    radius = min(
+        payload.radius_km or settings.alert_default_radius_km, settings.alert_max_radius_km
+    )
+    crops = [crop for crop in (payload.crops or []) if crop in CROP_TYPES]
+
+    confirm_token = security.new_report_token()
+    unsubscribe_token = security.new_report_token()
+
+    db.add(
+        AlertSubscription(
+            email=email,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            radius_km=radius,
+            crops=crops or None,
+            language=payload.language or "en",
+            confirm_token_hash=security.hash_token(confirm_token),
+            unsubscribe_token=unsubscribe_token,
+        )
+    )
+    db.commit()
+
+    app_url = _public_app_url()
+    confirm_url = f"{app_url}/alerts/confirm?token={confirm_token}"
+    subject, html, text = email_templates.alert_confirmation_email(
+        confirm_url=confirm_url,
+        radius_km=radius,
+        crops=crops,
+        app_url=app_url,
+    )
+    result = emailer.send_email(email, subject, html, text)
+    if not result.delivered:
+        logger.error("alert confirmation not delivered: %s", result.detail)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The confirmation email could not be sent. Try again shortly.",
+        )
+    return generic
+
+
+@app.get("/api/alerts/confirm", response_model=schemas.AlertSubscribeResponse, summary="Confirm an alert subscription")
+def confirm_alerts(token: str = Query(min_length=16, max_length=200), db: Session = Depends(get_db)):
+    subscription = alerts.confirm_subscription(db, security.hash_token(token.strip()))
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This confirmation link is invalid or was already used.",
+        )
+    return schemas.AlertSubscribeResponse(
+        status="confirmed",
+        detail=f"Alerts are on for a {subscription.radius_km:g} km radius around that point.",
+    )
+
+
+@app.post("/api/alerts/unsubscribe", response_model=schemas.AlertSubscribeResponse, summary="Stop alert emails")
+def unsubscribe_alerts(token: str = Query(min_length=16, max_length=200), db: Session = Depends(get_db)):
+    if not alerts.unsubscribe(db, token.strip()):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This unsubscribe link is not valid. The subscription may already be gone.",
+        )
+    return schemas.AlertSubscribeResponse(status="unsubscribed", detail="You will not receive further alerts.")
+
+
 # ---------------------------------------------------------------------------
 # Expert applications
 # ---------------------------------------------------------------------------
@@ -1461,6 +1568,12 @@ def analyze(
             "rice leaf is healthy. Any rice result should be treated as a disease "
             "screening only."
         )
+
+    # Tell nearby subscribers. Best effort: a mail failure must not fail the analysis.
+    try:
+        alerts.notify_neighbours(db, report)
+    except Exception:  # noqa: BLE001
+        logger.exception("outbreak alert step failed for report %s", report.id)
 
     # Housekeeping, at most once per interval. Never fails the request.
     maintenance.maybe_run_retention(db)

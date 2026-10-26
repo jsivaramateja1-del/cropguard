@@ -306,3 +306,73 @@ what was actually discovered.
 * No pest detection beyond the two-spotted spider mite class inherited from PlantVillage.
 * Reported validation accuracy is measured on a held-out split of the same datasets — it is
   not a field-performance claim.
+
+## Training all 38 classes
+
+The deployed model covers 16 (tomato, potato, rice). The full PlantVillage colour set has
+38. To train all of them:
+
+```python
+# on Kaggle, GPU on
+!python ml_training/train_kaggle.py \
+    --data-dirs "/kaggle/input/plantvillage-dataset/color" \
+    --allow-missing-classes \
+    --epochs 12 --batch-size 64 \
+    --out-dir /kaggle/working/export38
+```
+
+`--allow-missing-classes` is what you want: without it the run aborts on the rice folder
+being absent, because the canonical list includes rice classes PlantVillage does not have.
+
+**Before that works, two things must change, and they are data work, not code:**
+
+1. `class_names_canonical.json` lists 21 labels. Extend it to the 38 PlantVillage classes
+   plus the 3 rice ones.
+2. `backend/model/advisory_db.json` needs an entry for each new class, and
+   `scripts/check_contract.py` enforces that every canonical label has one. The advisory
+   entries must be written from an agronomy source — **not** generated — because the
+   project's rule is that no dosage or treatment claim is invented.
+
+The 38-class run will also need more memory headroom: 38 classes × the same backbone is
+fine, but the confusion matrix and per-class report get large.
+
+## Exporting for a phone (TFLite)
+
+```python
+!pip install ai-edge-torch ai-edge-litert
+!python ml_training/export_tflite.py \
+    --checkpoint /kaggle/working/export/cropguard_mobilenetv3.pth \
+    --out-dir /kaggle/working/export \
+    --verify
+```
+
+Writes `cropguard_mobilenetv3.tflite` and `class_names.json`. `--verify` compares the
+TFLite output against PyTorch and prints the maximum difference; do not ship the artifact
+if that number is above 1e-2.
+
+Two export routes are attempted: `ai-edge-torch` (PyTorch → TFLite directly) and, if that
+is unavailable, ONNX → TensorFlow → TFLite via `onnx2tf`. The script says which one it used.
+
+## Measuring field accuracy
+
+This is the number the pitch needs and does not yet have.
+
+```python
+!python ml_training/evaluate_field.py \
+    --model /kaggle/working/export/cropguard_mobilenetv3.onnx \
+    --data-dir /kaggle/input/plantdoc-dataset/train \
+    --out-dir /kaggle/working/field-eval
+```
+
+Writes `summary.json`, `predictions.csv` (one row per image, so a number can be traced to a
+specific photo) and `per_class.csv`.
+
+Use **PlantDoc** (`nirmalsankalana/plantdoc-dataset`) for the headline figure — it is real
+field photography, which is the whole point. Running the same script on PlantVillage gives
+the lab baseline; the gap between the two is the honest measure of what field conditions
+cost.
+
+The script reports accuracy, macro recall, the share of predictions below the 0.75 review
+threshold, and the weakest classes. It does not hide classes the model never learned — it
+lists them, because a class the model cannot know must not quietly inflate or deflate the
+average.

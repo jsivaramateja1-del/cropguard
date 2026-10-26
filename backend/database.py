@@ -141,6 +141,9 @@ def _apply_additive_migrations() -> None:
             "CREATE INDEX IF NOT EXISTS ix_expert_applications_status ON expert_applications (status)",
             "CREATE INDEX IF NOT EXISTS ix_password_resets_user_id ON password_resets (user_id)",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_password_resets_token_hash ON password_resets (token_hash)",
+            "CREATE INDEX IF NOT EXISTS ix_alert_subscriptions_email ON alert_subscriptions (email)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "ix_alert_subscriptions_unsubscribe_token ON alert_subscriptions (unsubscribe_token)",
             # Postgres only: an admin action has no report. SQLite cannot drop NOT NULL
             # without rebuilding the table, so the statement is skipped there — local
             # databases are recreated from the models, where the column is already nullable.
