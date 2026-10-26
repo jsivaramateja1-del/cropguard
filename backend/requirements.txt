@@ -16,6 +16,11 @@ python-multipart==0.0.20
 # --- data layer --------------------------------------------------------------
 SQLAlchemy==2.0.36
 psycopg2-binary==2.9.10        # PostgreSQL driver (Supabase)
+
+# account authentication (bcrypt hashing, signed access tokens)
+bcrypt==4.2.1
+PyJWT==2.10.1
+email-validator==2.2.0
 alembic==1.14.0                # migrations, used from Phase 7 onward
 
 # --- validation / config -----------------------------------------------------

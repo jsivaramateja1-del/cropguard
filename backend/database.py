@@ -108,6 +108,8 @@ _ADDED_COLUMNS = {
     "reports": {
         "owner_token_hash": "VARCHAR(64)",
         "reference": "VARCHAR(16)",
+        # Nullable: existing anonymous reports keep working unchanged.
+        "owner_user_id": "INTEGER",
     },
 }
 
@@ -132,6 +134,9 @@ def _apply_additive_migrations() -> None:
         for statement in (
             "CREATE INDEX IF NOT EXISTS ix_reports_owner_token_hash ON reports (owner_token_hash)",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_reports_reference ON reports (reference)",
+            "CREATE INDEX IF NOT EXISTS ix_reports_owner_user_id ON reports (owner_user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)",
+            "CREATE INDEX IF NOT EXISTS ix_users_role ON users (role)",
         ):
             try:
                 connection.execute(text(statement))

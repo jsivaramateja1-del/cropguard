@@ -87,29 +87,49 @@ Rows are append-only: the application never updates or deletes them.
 - `/api/analyze` is rate limited per client (default 20 per 60 s) and returns `429` with
   `Retry-After`.
 
+## Accounts (added after the initial token-only model)
+
+Farmers can now create an account; the anonymous access-code path still works and is not
+deprecated.
+
+| Concern | How it is handled |
+|---|---|
+| Password storage | bcrypt, cost 12. Never logged, never returned |
+| Password policy | Minimum 10 characters, maximum 200 bytes (bcrypt truncates past 72) |
+| Sessions | Signed JWT (HS256), 24-hour expiry, carrying user id, role and a `ver` claim |
+| Revocation | Bumping `users.token_version` invalidates every token issued before it — used by logout, password change and account deletion |
+| Signing key | `SECRET_KEY`. Unset means a random per-process key: safe, but signs everyone out on restart |
+| Brute force | 8 failures per email and per client per 15 minutes, then `429` with `Retry-After` |
+| Account enumeration | Registration and login return identical responses whether or not an address exists |
+| Role elevation | Registration can only create a farmer. Expert and admin accounts are created by an admin via `POST /api/admin/users`. A `role` field in a registration body is ignored |
+| Report ownership | `reports.owner_user_id` links a signed-in farmer's reports; anonymous reports stay reachable only by access code |
+| Account deletion | Deactivates the account, anonymises the farmer name on its reports, keeps the aggregate for the outbreak map |
+
+The legacy `EXPERT_TOKEN` shared secret still authenticates staff. It is kept so the
+already-deployed expert flow keeps working, and it is documented as legacy rather than
+recommended. A JWT for an expert or admin account is the supported path.
+
 ## Known limitations — stated rather than hidden
 
-1. **Shared secrets, not user accounts.** There is one expert token for all experts. There
-   is no registration, no password reset, no per-user revocation, and no way to attribute
-   two different experts acting under the same token. The upgrade path is an identity
-   provider (Auth0, Supabase Auth, Cognito) issuing short-lived JWTs with per-user claims;
-   the authorization checks in `security.py` are the only code that would change.
-2. **Rate limiting is per process.** With several workers the effective limit multiplies.
+1. **No password reset by email.** There is no mail provider configured, so a forgotten
+   password means an admin resets it. Adding one needs an SMTP or Resend/SES account.
+2. **The legacy shared staff token still works.** Kept deliberately so the deployed expert
+   page does not break; it should be removed once every expert has an account.
+3. **Rate limiting is per process.** With several workers the effective limit multiplies.
    A shared store (Redis) is the production answer.
-3. **Images are served from `/uploads` without per-request authorisation.** Filenames are
+4. **Images are served from `/uploads` without per-request authorisation.** Filenames are
    unguessable UUIDs, which is obscurity rather than access control. Configuring
    Cloudinary with signed URLs, or moving to authenticated image proxying, closes this.
-4. **No TLS termination of our own** — Render and Vercel provide HTTPS in front.
-5. **`GET /api/reports` returns farmer names to any staff token.** Acceptable for a
+5. **No TLS termination of our own** — Render and Vercel provide HTTPS in front.
+6. **`GET /api/reports` returns farmer names to any staff token.** Acceptable for a
    review queue; a production deployment would add field-level redaction by role.
 
 ## Verifying it
 
 ```bash
 cd backend
-python -m pytest tests/test_security.py -v
+python -m pytest tests/test_security.py tests/test_auth.py -v
 ```
 
-27 tests covering unauthenticated access, cross-owner access, bogus tokens, the expert
-name not authorising, audit contents, unsupported crops, advisory suppression on crop
-mismatch, health not leaking paths, and rate limiting.
+25 account tests (registration, role boundaries, throttling, expiry, revocation,
+deletion) plus the access-control suite.

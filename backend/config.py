@@ -81,7 +81,15 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
-    # --- staff authentication -------------------------------------------------
+    # --- account authentication ------------------------------------------------
+    # Signing key for access tokens. If unset, a random key is generated per process,
+    # which invalidates tokens on restart — safe, but inconvenient, so set it.
+    secret_key: str = ""
+    access_token_ttl_seconds: int = 86400
+    login_max_failures: int = 8
+    login_failure_window: int = 900
+
+    # --- staff authentication (legacy shared secret) --------------------------
     # Prototype-grade identity: one shared secret per role, supplied as a bearer token.
     # No default is provided, so an unconfigured deployment has no privileged access at
     # all rather than a default password. See docs/security.md for the upgrade path.

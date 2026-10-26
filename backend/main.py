@@ -28,12 +28,13 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 import advisory as advisory_module
 import schemas
 import storage
+import auth
 import database
 import security
 from config import settings
@@ -47,6 +48,7 @@ from inference import (
 )
 from models import (
     AuditEvent,
+    User,
     CROP_TYPES,
     FollowUp,
     FollowUpCondition,
@@ -188,6 +190,93 @@ def _validate_decoded_format(image) -> None:
         )
 
 
+def _user_from_authorization(authorization: Optional[str], db: Session) -> Optional[User]:
+    """Resolve a signed-in account from a bearer token, or None.
+
+    Checks the token signature, expiry, the account being active, the role still being
+    valid, and the token version — so a revoked token stops working immediately.
+    """
+    claims = auth.decode_access_token(auth.bearer_token(authorization))
+    if not claims:
+        return None
+    try:
+        user_id = int(claims["sub"])
+    except (TypeError, ValueError):
+        return None
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        return None
+    if int(claims.get("ver", 0)) != int(user.token_version):
+        return None
+    return user
+
+
+def _resolve_staff(authorization: Optional[str], db: Session) -> Optional[Tuple[str, str]]:
+    """Staff identity from an account token, or from the legacy shared secret.
+
+    Both are accepted deliberately: the shared token is what the deployed expert page
+    uses today, and removing it in the same change that introduces accounts would break a
+    working system. Accounts are the supported path; the secret is documented as legacy.
+    """
+    legacy = security.staff_identity(authorization)
+    if legacy is not None:
+        return legacy
+    user = _user_from_authorization(authorization, db)
+    if user is not None and user.role in auth.STAFF_ROLES:
+        return user.role, user.display_name
+    return None
+
+
+def require_staff_dep(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Tuple[str, str]:
+    identity = _resolve_staff(authorization, db)
+    if identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This endpoint requires an authenticated staff account.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return identity
+
+
+def require_expert_dep(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Tuple[str, str]:
+    identity = _resolve_staff(authorization, db)
+    if identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This endpoint requires an authenticated expert account.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if identity[0] not in auth.STAFF_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an agricultural expert may perform this action.",
+        )
+    return identity
+
+
+def optional_user(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    return _user_from_authorization(authorization, db)
+
+
+def require_user(user: Optional[User] = Depends(optional_user)) -> User:
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in to use this endpoint.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
 def _crop_of(label: str) -> str:
     """Local copy of the label convention: 'Crop___Condition'."""
     return label.split("___")[0] if "___" in label else label
@@ -280,6 +369,7 @@ def _authorise_report(
     report: Report,
     report_token: Optional[str],
     authorization: Optional[str],
+    db: Session,
 ) -> Optional[Tuple[str, str]]:
     """Allow the report's owner, or any authenticated staff member.
 
@@ -287,9 +377,13 @@ def _authorise_report(
     never authorises anything, and a wrong token is reported identically to a missing one
     so the response cannot be used to probe which ids exist.
     """
-    staff = security.staff_identity(authorization)
+    staff = _resolve_staff(authorization, db)
     if staff is not None:
         return staff
+    # A signed-in farmer may read their own reports.
+    user = _user_from_authorization(authorization, db)
+    if user is not None and report.owner_user_id == user.id:
+        return None
     if security.token_matches(report_token, report.owner_token_hash):
         return None
     raise HTTPException(
@@ -541,6 +635,224 @@ def model_contract() -> schemas.ModelContractOut:
     )
 
 
+
+
+# ---------------------------------------------------------------------------
+# Accounts
+# ---------------------------------------------------------------------------
+@app.post(
+    "/api/auth/register",
+    response_model=schemas.AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a farmer account",
+)
+def register(
+    payload: schemas.RegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.AuthResponse:
+    """Self-service registration. Always creates a farmer — never staff.
+
+    Elevation is not something a public endpoint can grant, so an expert account has to
+    be created by an administrator.
+    """
+    email = auth.normalise_email(payload.email)
+    problem = auth.password_problem(payload.password)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem)
+
+    if db.execute(select(User).where(User.email == email)).scalar_one_or_none():
+        # Deliberately vague: confirming that an address is registered leaks accounts.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That email cannot be used. If you already have an account, sign in.",
+        )
+
+    user = User(
+        email=email,
+        password_hash=auth.hash_password(payload.password),
+        display_name=payload.display_name.strip(),
+        role=auth.ROLE_FARMER,
+        is_active=True,
+        token_version=1,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = auth.create_access_token(user.id, user.role, user.token_version)
+    logger.info("registered farmer account %s", user.id)
+    return schemas.AuthResponse(
+        access_token=token,
+        expires_in=auth.ACCESS_TOKEN_TTL_SECONDS,
+        user=schemas.UserOut.model_validate(user),
+    )
+
+
+@app.post("/api/auth/login", response_model=schemas.AuthResponse, summary="Sign in")
+def login(
+    payload: schemas.LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.AuthResponse:
+    email = auth.normalise_email(payload.email)
+    throttle = auth.login_throttle()
+    key_email = f"email:{email}"
+    key_client = f"client:{security.client_key(request)}"
+
+    for key in (key_email, key_client):
+        blocked, retry_after = throttle.blocked(key)
+        if blocked:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed sign-in attempts. Wait a few minutes and try again.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    # Same message and roughly the same work either way, so the response does not reveal
+    # whether the address exists.
+    if user is None or not auth.verify_password(payload.password, user.password_hash):
+        throttle.record_failure(key_email)
+        throttle.record_failure(key_client)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email or password is incorrect.",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated.",
+        )
+
+    throttle.reset(key_email)
+    throttle.reset(key_client)
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    token = auth.create_access_token(user.id, user.role, user.token_version)
+    return schemas.AuthResponse(
+        access_token=token,
+        expires_in=auth.ACCESS_TOKEN_TTL_SECONDS,
+        user=schemas.UserOut.model_validate(user),
+    )
+
+
+@app.get("/api/auth/me", response_model=schemas.UserOut, summary="Who am I")
+def whoami(user: User = Depends(require_user)) -> schemas.UserOut:
+    return schemas.UserOut.model_validate(user)
+
+
+@app.post("/api/auth/logout", summary="Revoke every token for this account")
+def logout(user: User = Depends(require_user), db: Session = Depends(get_db)) -> dict:
+    """Invalidate all outstanding tokens by bumping the token version."""
+    user.token_version += 1
+    db.commit()
+    return {"status": "signed_out"}
+
+
+@app.post("/api/auth/password", summary="Change password")
+def change_password(
+    payload: schemas.ChangePasswordRequest,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not auth.verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="The current password is incorrect.",
+        )
+    problem = auth.password_problem(payload.new_password)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem)
+    if payload.new_password == payload.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The new password must differ from the current one.",
+        )
+    user.password_hash = auth.hash_password(payload.new_password)
+    # Every other session is signed out; the caller must sign in again.
+    user.token_version += 1
+    db.commit()
+    return {"status": "password_changed", "signed_out_everywhere": True}
+
+
+@app.delete("/api/auth/account", summary="Delete your account")
+def delete_account(
+    payload: schemas.DeleteAccountRequest,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Deactivate the account and strip personal details from its reports.
+
+    Reports are kept because they feed the outbreak map and expert history, but the
+    farmer's name is removed and the account can no longer sign in. This is the "request
+    permitted data deletion" path: the personal data goes, the aggregate stays.
+    """
+    if not auth.verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password is incorrect.",
+        )
+
+    db.execute(
+        update(Report)
+        .where(Report.owner_user_id == user.id)
+        .values(farmer_name="Deleted account", owner_user_id=None)
+    )
+    user.is_active = False
+    user.email = f"deleted+{user.id}@invalid.local"
+    user.display_name = "Deleted account"
+    user.password_hash = auth.hash_password(security.new_report_token())
+    user.token_version += 1
+    db.commit()
+    logger.info("account %s deleted and anonymised", user.id)
+    return {"status": "account_deleted", "reports_anonymised": True}
+
+
+@app.post(
+    "/api/admin/users",
+    response_model=schemas.UserOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an expert or admin account (admin only)",
+)
+def create_staff_account(
+    payload: schemas.CreateStaffRequest,
+    staff: Tuple[str, str] = Depends(require_staff_dep),
+    db: Session = Depends(get_db),
+) -> schemas.UserOut:
+    """The only way to create elevated accounts. Requires an existing staff identity."""
+    if staff[0] != auth.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can create staff accounts.",
+        )
+    problem = auth.password_problem(payload.password)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem)
+
+    email = auth.normalise_email(payload.email)
+    if db.execute(select(User).where(User.email == email)).scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="That email is already registered."
+        )
+
+    user = User(
+        email=email,
+        password_hash=auth.hash_password(payload.password),
+        display_name=payload.display_name.strip(),
+        role=payload.role,
+        is_active=True,
+        token_version=1,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info("staff account %s created by %s", user.id, staff[1])
+    return schemas.UserOut.model_validate(user)
+
+
 # ---------------------------------------------------------------------------
 # Analyze
 # ---------------------------------------------------------------------------
@@ -554,6 +866,7 @@ def analyze(
     region_name: Optional[str] = Form(default=None),
     request_expert_review: bool = Form(default=False),
     request: Request = None,
+    current_user: Optional[User] = Depends(optional_user),
     db: Session = Depends(get_db),
 ) -> schemas.AnalyzeResponse:
     crop = _validate_crop(crop_type)
@@ -625,6 +938,7 @@ def analyze(
     report = Report(
         farmer_name=farmer_name.strip(),
         owner_token_hash=security.hash_token(access_token),
+        owner_user_id=current_user.id if current_user else None,
         crop_type=crop,
         image_url=stored.url,
         predicted_disease=prediction.top.label,
@@ -752,7 +1066,7 @@ def list_reports(
     region_name: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    staff: Tuple[str, str] = Depends(security.require_staff),
+    staff: Tuple[str, str] = Depends(require_staff_dep),
     db: Session = Depends(get_db),
 ) -> schemas.ReportListOut:
     """The review queue. Staff only — it contains every farmer's name and GPS position."""
@@ -834,7 +1148,7 @@ def get_report_by_reference(
                 "reading it also needs the access code shown when it was created."
             ),
         )
-    _authorise_report(report, x_report_token, authorization)
+    _authorise_report(report, x_report_token, authorization, db)
     return schemas.ReportOut.model_validate(report)
 
 
@@ -847,7 +1161,7 @@ def get_report(
 ) -> schemas.ReportOut:
     """One report, for its owner (by access token) or for staff."""
     report = _load_report(db, report_id)
-    _authorise_report(report, x_report_token, authorization)
+    _authorise_report(report, x_report_token, authorization, db)
     return schemas.ReportOut.model_validate(report)
 
 
@@ -859,7 +1173,7 @@ def get_report(
 def verify_report(
     report_id: int,
     payload: schemas.VerifyReportRequest,
-    staff: Tuple[str, str] = Depends(security.require_expert),
+    staff: Tuple[str, str] = Depends(require_expert_dep),
     db: Session = Depends(get_db),
 ) -> schemas.ReportOut:
     """Expert confirmation or correction. Requires a validated expert token.
@@ -949,7 +1263,7 @@ def add_followup(
 ) -> schemas.FollowUpOut:
     """A follow-up observation: the report's owner, or staff."""
     report = _load_report(db, report_id)
-    _authorise_report(report, x_report_token, authorization)
+    _authorise_report(report, x_report_token, authorization, db)
 
     image_url: Optional[str] = None
     warning: Optional[str] = None
@@ -1100,7 +1414,7 @@ def get_outbreaks(
 
 @app.get("/api/stats", response_model=schemas.StatsResponse, summary="Aggregate statistics")
 def get_stats(
-    staff: Tuple[str, str] = Depends(security.require_staff),
+    staff: Tuple[str, str] = Depends(require_staff_dep),
     db: Session = Depends(get_db),
 ) -> schemas.StatsResponse:
     """Operational aggregates. Staff only."""

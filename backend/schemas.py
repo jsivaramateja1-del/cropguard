@@ -14,7 +14,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from advisory import supported_diseases
 from models import CROP_TYPES, FollowUpCondition, ReportStatus, WeatherRiskLevel
@@ -150,6 +158,57 @@ class AuditEventOut(BaseModel):
     @field_serializer("created_at")
     def _serialise_created_at(self, value: datetime) -> str:
         return as_utc(value).isoformat()
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    display_name: str = Field(min_length=2, max_length=120)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    display_name: str
+    role: str
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+
+    @field_serializer("created_at", "last_login_at")
+    def _serialise(self, value: Optional[datetime]) -> Optional[str]:
+        return as_utc(value).isoformat() if value else None
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserOut
+
+
+class CreateStaffRequest(BaseModel):
+    """Admin-only: create an expert or admin account. Never exposed publicly."""
+
+    email: EmailStr
+    password: str
+    display_name: str = Field(min_length=2, max_length=120)
+    role: Literal["expert", "admin"]
 
 
 class OutbreakPointOut(BaseModel):

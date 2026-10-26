@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react'
-import { fetchModelContract, fetchReviewQueue, verifyReport } from '../api.js'
+import { fetchModelContract, fetchReviewQueue, loginAccount, verifyReport } from '../api.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card.jsx'
 import { Button } from '../components/ui/button.jsx'
 import { Badge } from '../components/ui/badge.jsx'
@@ -39,6 +39,9 @@ function when(value) {
 export default function ExpertPage() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '')
   const [tokenDraft, setTokenDraft] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [signInMode, setSignInMode] = useState('account')
   const [queue, setQueue] = useState([])
   const [contract, setContract] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -82,13 +85,37 @@ export default function ExpertPage() {
     if (token) load(token)
   }, [token, load])
 
-  function signIn(event) {
+  function signInWithToken(event) {
     event.preventDefault()
     const value = tokenDraft.trim()
     if (!value) return
     sessionStorage.setItem(TOKEN_KEY, value)
     setToken(value)
     setTokenDraft('')
+  }
+
+  async function signInWithAccount(event) {
+    event.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const data = await loginAccount({ email, password })
+      if (!['expert', 'admin'].includes(data.user.role)) {
+        setError({
+          message:
+            'This account is a farmer account. Expert review needs an expert or administrator account.',
+        })
+        setLoading(false)
+        return
+      }
+      sessionStorage.setItem(TOKEN_KEY, data.access_token)
+      setToken(data.access_token)
+      setPassword('')
+    } catch (signInError) {
+      setError(signInError)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function signOut() {
@@ -145,29 +172,91 @@ export default function ExpertPage() {
           </p>
         </header>
 
+        {error ? (
+          <Alert variant="destructive">
+            <TriangleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">Could not sign in</p>
+              <p className="mt-0.5">{error.message}</p>
+            </div>
+          </Alert>
+        ) : null}
+
         <Card>
           <CardContent className="pt-4">
-            <form onSubmit={signIn} className="space-y-3">
-              <div>
-                <Label htmlFor="expert-token">Expert token</Label>
-                <Input
-                  id="expert-token"
-                  type="password"
-                  autoComplete="off"
-                  className="mt-1"
-                  placeholder="Paste the EXPERT_TOKEN value"
-                  value={tokenDraft}
-                  onChange={(event) => setTokenDraft(event.target.value)}
-                />
-                <p className="mt-1 text-2xs text-muted-foreground">
-                  Kept in this browser tab only, never stored on the server in readable form.
-                </p>
-              </div>
-              <Button type="submit" className="w-full" disabled={!tokenDraft.trim()}>
-                <KeyRound size={15} aria-hidden="true" />
-                Sign in
-              </Button>
-            </form>
+            {signInMode === 'account' ? (
+              <form onSubmit={signInWithAccount} className="space-y-3">
+                <div>
+                  <Label htmlFor="expert-email">Email</Label>
+                  <Input
+                    id="expert-email"
+                    type="email"
+                    autoComplete="email"
+                    className="mt-1"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="expert-password">Password</Label>
+                  <Input
+                    id="expert-password"
+                    type="password"
+                    autoComplete="current-password"
+                    className="mt-1"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading || !email.trim() || !password}
+                >
+                  {loading ? (
+                    <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <KeyRound size={15} aria-hidden="true" />
+                  )}
+                  Sign in
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={signInWithToken} className="space-y-3">
+                <div>
+                  <Label htmlFor="expert-token">Staff token</Label>
+                  <Input
+                    id="expert-token"
+                    type="password"
+                    autoComplete="off"
+                    className="mt-1"
+                    placeholder="Paste the EXPERT_TOKEN value"
+                    value={tokenDraft}
+                    onChange={(event) => setTokenDraft(event.target.value)}
+                  />
+                  <p className="mt-1 text-2xs text-muted-foreground">
+                    The shared secret configured on the server. Kept in this tab only.
+                  </p>
+                </div>
+                <Button type="submit" className="w-full" disabled={!tokenDraft.trim()}>
+                  <KeyRound size={15} aria-hidden="true" />
+                  Sign in with token
+                </Button>
+              </form>
+            )}
+
+            <button
+              type="button"
+              className="mt-3 w-full text-center text-2xs text-muted-foreground underline"
+              onClick={() => {
+                setSignInMode(signInMode === 'account' ? 'token' : 'account')
+                setError(null)
+              }}
+            >
+              {signInMode === 'account'
+                ? 'Use a staff token instead'
+                : 'Sign in with an email account'}
+            </button>
           </CardContent>
         </Card>
       </div>

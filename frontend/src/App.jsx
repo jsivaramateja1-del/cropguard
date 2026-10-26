@@ -15,6 +15,7 @@ function RouteLoading() {
 const OutbreakMapPage = lazy(() => import('./pages/OutbreakMapPage.jsx'))
 const ExpertPage = lazy(() => import('./pages/ExpertPage.jsx'))
 const FollowUpPage = lazy(() => import('./pages/FollowUpPage.jsx'))
+const AccountPage = lazy(() => import('./pages/AccountPage.jsx'))
 import { Button } from './components/ui/button.jsx'
 
 /**
@@ -72,6 +73,13 @@ function Layout({ children }) {
                 </Button>
               )}
             </NavLink>
+            <NavLink to="/account">
+              {({ isActive }) => (
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                  Account
+                </Button>
+              )}
+            </NavLink>
           </nav>
         </div>
       </header>
@@ -113,6 +121,14 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<DiagnosePage />} />
+        <Route
+          path="/account"
+          element={
+            <Suspense fallback={<RouteLoading />}>
+              <AccountPage />
+            </Suspense>
+          }
+        />
         <Route
           path="/follow-up"
           element={

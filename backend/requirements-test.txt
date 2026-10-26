@@ -21,6 +21,11 @@ pydantic-settings==2.7.0
 # resilience) need it even though they never reach a real server.
 psycopg2-binary==2.9.10
 
+# account authentication (bcrypt hashing, signed access tokens)
+bcrypt==4.2.1
+PyJWT==2.10.1
+email-validator==2.2.0
+
 # inference (ONNX path) and image handling
 onnx==1.17.0
 onnxruntime==1.20.1

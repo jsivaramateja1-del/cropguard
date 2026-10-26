@@ -9,11 +9,46 @@ const env = import.meta.env || {}
 const RAW_BASE = env.VITE_API_BASE_URL || 'http://localhost:8000'
 export const API_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 
+const TOKEN_KEY = 'cropguard.access_token'
+
+/**
+ * The signed-in account's access token. Kept in localStorage so a refresh does not sign
+ * the farmer out; it expires server-side after 24 hours and is revoked by the server on
+ * logout or password change, so a stale copy cannot be used.
+ */
+export function getAuthToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+export function setAuthToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* private mode: the session simply will not survive a refresh */
+  }
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   // Generous: the free backend can take a minute to wake from idle.
   timeout: 45000,
 })
+
+// Attach the signed-in account's token to every request, unless the caller already set
+// an explicit Authorization header (the expert page does, when using a staff token).
+api.interceptors.request.use((config) => {
+  const token = getAuthToken()
+  if (token && !config.headers?.Authorization) {
+    config.headers = { ...config.headers, Authorization: `Bearer ${token}` }
+  }
+  return config
+})
+
 
 /** An error with a message that is safe and useful to show a farmer. */
 export class ApiError extends Error {
@@ -247,6 +282,75 @@ export async function addFollowUp(reportId, reportToken, { conditionStatus, note
         ...(reportToken ? { 'X-Report-Token': reportToken } : {}),
       },
     })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+// --- accounts ---------------------------------------------------------------
+
+export async function registerAccount({ email, password, displayName }) {
+  try {
+    const { data } = await api.post('/api/auth/register', {
+      email,
+      password,
+      display_name: displayName,
+    })
+    setAuthToken(data.access_token)
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+export async function loginAccount({ email, password }) {
+  try {
+    const { data } = await api.post('/api/auth/login', { email, password })
+    setAuthToken(data.access_token)
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+export async function fetchMe() {
+  try {
+    const { data } = await api.get('/api/auth/me')
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+export async function logoutAccount() {
+  try {
+    await api.post('/api/auth/logout')
+  } catch {
+    /* the token is being discarded either way */
+  } finally {
+    setAuthToken(null)
+  }
+}
+
+export async function changePassword({ currentPassword, newPassword }) {
+  try {
+    const { data } = await api.post('/api/auth/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    // The server revoked every token, including this one.
+    setAuthToken(null)
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+export async function deleteAccount(password) {
+  try {
+    const { data } = await api.delete('/api/auth/account', { data: { password } })
+    setAuthToken(null)
     return data
   } catch (error) {
     throw toApiError(error)

@@ -35,6 +35,7 @@ const CHECKS = [
   ['outbreak nav', 'Outbreaks'],
   ['follow-up nav', 'Follow up'],
   ['expert nav', 'Expert'],
+  ['account nav', 'Account'],
 ]
 
 let failures = 0
