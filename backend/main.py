@@ -450,6 +450,13 @@ def health() -> dict:
                 # A code plus a fix, never the driver message: that would carry the
                 # hostname and username. The full message is in the logs.
                 "reason": database.INIT_REASON or (None if db_ok else "query_failed"),
+                # Only computed when something is wrong: DNS lookups on every healthy
+                # health check would be wasteful.
+                "host": (
+                    database.host_diagnostics()
+                    if (database.INIT_ERROR or not db_ok)
+                    else {"applies": False}
+                ),
                 "hint": (
                     database.classify_db_error(database.INIT_ERROR)[1]
                     if database.INIT_ERROR

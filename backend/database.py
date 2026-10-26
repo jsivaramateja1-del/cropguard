@@ -16,6 +16,7 @@ Two details matter for Supabase specifically:
 from __future__ import annotations
 
 import logging
+import socket
 from typing import Generator
 
 from fastapi import HTTPException, status
@@ -145,6 +146,35 @@ def _apply_additive_migrations() -> None:
 # outage, and it hides the reason behind "exited with status 3".
 INIT_ERROR: Optional[str] = None
 INIT_REASON: Optional[str] = None
+
+
+def host_diagnostics() -> dict:
+    """Does the configured host resolve, and to which address family?
+
+    This is the difference between three very different problems that all surface as
+    "OperationalError": a typo (nothing resolves), an IPv6-only host on an IPv4-only
+    platform (AAAA only — Supabase's direct host is exactly this), and a reachable host
+    that rejects us for another reason. The hostname itself is never published.
+    """
+    if engine.dialect.name == "sqlite":
+        return {"applies": False}
+    host = engine.url.host
+    if not host:
+        return {"applies": True, "resolves": False, "address_family": "none"}
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return {"applies": True, "resolves": False, "address_family": "none"}
+    families = {info[0] for info in infos}
+    if socket.AF_INET in families and socket.AF_INET6 in families:
+        family = "both"
+    elif socket.AF_INET in families:
+        family = "ipv4"
+    elif socket.AF_INET6 in families:
+        family = "ipv6_only"
+    else:
+        family = "unknown"
+    return {"applies": True, "resolves": True, "address_family": family}
 
 
 def classify_db_error(message: str) -> tuple:

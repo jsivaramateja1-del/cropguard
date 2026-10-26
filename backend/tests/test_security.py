@@ -473,3 +473,49 @@ def test_api_starts_and_reports_an_unreachable_database(monkeypatch):
         database.engine = original_engine
         database.SessionLocal = original_session
         database.INIT_ERROR = None
+
+
+# ---------------------------------------------------------------------------
+# Database host diagnostics
+# ---------------------------------------------------------------------------
+def test_host_diagnostics_identifies_an_ipv6_only_host(monkeypatch):
+    """Supabase's direct host is AAAA-only; Render is IPv4-only. That must be visible."""
+    import socket as socket_module
+
+    import database
+    from sqlalchemy import create_engine
+
+    original = database.engine
+    monkeypatch.setattr(
+        database, "engine",
+        create_engine("postgresql://u:p@db.example.supabase.co:5432/postgres"),
+    )
+    try:
+        monkeypatch.setattr(
+            socket_module, "getaddrinfo",
+            lambda *a, **k: [(socket_module.AF_INET6, 1, 6, "", ("2406:da1a::1", 0, 0, 0))],
+        )
+        result = database.host_diagnostics()
+        assert result == {"applies": True, "resolves": True, "address_family": "ipv6_only"}
+
+        monkeypatch.setattr(
+            socket_module, "getaddrinfo",
+            lambda *a, **k: [(socket_module.AF_INET, 1, 6, "", ("1.2.3.4", 0))],
+        )
+        assert database.host_diagnostics()["address_family"] == "ipv4"
+
+        def _fail(*_a, **_k):
+            raise socket_module.gaierror("nope")
+
+        monkeypatch.setattr(socket_module, "getaddrinfo", _fail)
+        assert database.host_diagnostics() == {
+            "applies": True, "resolves": False, "address_family": "none"
+        }
+    finally:
+        database.engine = original
+
+
+def test_host_diagnostics_is_skipped_for_sqlite():
+    import database
+
+    assert database.host_diagnostics() == {"applies": False}
