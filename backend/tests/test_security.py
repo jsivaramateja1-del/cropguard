@@ -323,3 +323,57 @@ def test_analysis_is_rate_limited(client, leaf, monkeypatch):
     assert statuses[:2] == [200, 200]
     assert statuses[2] == 429
     assert "Retry-After" in response.headers
+
+
+# ---------------------------------------------------------------------------
+# Schema migration
+# ---------------------------------------------------------------------------
+def test_additive_migration_upgrades_an_older_database(tmp_path):
+    """A database created before the security change must still work after it.
+
+    `create_all` creates missing tables but never alters an existing one, so without the
+    additive migration a live SQLite deployment would reject every insert.
+    """
+    import sqlite3
+
+    from sqlalchemy import create_engine, inspect, text
+
+    db_path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """CREATE TABLE reports (
+               id INTEGER PRIMARY KEY, farmer_name VARCHAR(120) NOT NULL,
+               crop_type VARCHAR(32) NOT NULL, image_url VARCHAR(512) NOT NULL,
+               predicted_disease VARCHAR(120) NOT NULL, confidence FLOAT NOT NULL,
+               latitude FLOAT NOT NULL, longitude FLOAT NOT NULL,
+               status VARCHAR(32) NOT NULL, created_at TIMESTAMP NOT NULL)"""
+    )
+    connection.commit()
+    connection.close()
+
+    import importlib
+
+    import database
+
+    original_engine = database.engine
+    original_url = database.DATABASE_URL
+    try:
+        database.engine = create_engine(f"sqlite:///{db_path}")
+        database.DATABASE_URL = f"sqlite:///{db_path}"
+        database._apply_additive_migrations()
+        columns = {c["name"] for c in inspect(database.engine).get_columns("reports")}
+        assert "owner_token_hash" in columns
+        assert "reference" in columns
+        with database.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO reports (farmer_name, crop_type, image_url, "
+                    "predicted_disease, confidence, latitude, longitude, status, "
+                    "created_at, owner_token_hash, reference) VALUES "
+                    "('a','Tomato','u','Tomato___healthy',0.9,1,2,'AI_Verified',"
+                    "'2026-01-01',NULL,'CG-00001')"
+                )
+            )
+    finally:
+        database.engine = original_engine
+        database.DATABASE_URL = original_url

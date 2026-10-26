@@ -89,6 +89,44 @@ def get_db() -> Generator[Session, None, None]:
         session.close()
 
 
+# Columns added after the first deployment. `create_all` creates missing *tables* but
+# never alters an existing one, so a live SQLite database would reject every insert after
+# a schema change. These are applied idempotently at startup.
+_ADDED_COLUMNS = {
+    "reports": {
+        "owner_token_hash": "VARCHAR(64)",
+        "reference": "VARCHAR(16)",
+    },
+}
+
+
+def _apply_additive_migrations() -> None:
+    """Add any missing columns to existing tables, and the indexes that go with them."""
+    from sqlalchemy import inspect, text  # noqa: PLC0415
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as connection:
+        for table, columns in _ADDED_COLUMNS.items():
+            if table not in existing_tables:
+                continue
+            present = {column["name"] for column in inspector.get_columns(table)}
+            for name, sql_type in columns.items():
+                if name in present:
+                    continue
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
+                logger.info("migration: added %s.%s", table, name)
+        # Indexes and the unique constraint are created only if absent.
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS ix_reports_owner_token_hash ON reports (owner_token_hash)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_reports_reference ON reports (reference)",
+        ):
+            try:
+                connection.execute(text(statement))
+            except Exception as error:  # noqa: BLE001 - non-fatal, log and continue
+                logger.warning("migration step skipped (%s): %s", statement, error)
+
+
 def init_db() -> None:
     """Create tables that do not exist yet.
 
@@ -98,6 +136,7 @@ def init_db() -> None:
     import models  # noqa: F401  (import registers the mappers on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    _apply_additive_migrations()
 
 
 def database_info() -> dict:
