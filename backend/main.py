@@ -377,6 +377,7 @@ def root() -> dict:
             "PATCH /api/reports/{id}/verify",
             "POST /api/reports/{id}/followup",
             "GET /api/weather",
+            "GET /api/outbreaks",
             "GET /api/stats",
             "GET /health",
         ],
@@ -941,6 +942,103 @@ def add_followup(
 # ---------------------------------------------------------------------------
 # Statistics
 # ---------------------------------------------------------------------------
+@app.get("/api/outbreaks", response_model=schemas.OutbreakResponse, summary="Public outbreak map")
+def get_outbreaks(
+    crop_type: Optional[str] = Query(default=None),
+    disease: Optional[str] = Query(default=None),
+    risk: Optional[str] = Query(default=None, description="Low, Moderate, High or Critical"),
+    region_name: Optional[str] = Query(default=None),
+    days: int = Query(default=90, ge=1, le=730, description="How far back to look"),
+    db: Session = Depends(get_db),
+) -> schemas.OutbreakResponse:
+    """Anonymised outbreak points for the public map.
+
+    Separate from `GET /api/reports` on purpose. The reports list is a review queue: it
+    contains farmer names, exact GPS and image URLs, so it is staff-only. This endpoint
+    answers a different question — *where is disease being reported* — and returns only
+    what that question needs:
+
+    * coordinates rounded to 2 decimal places (~1 km), so a farm is not pinpointed
+    * no farmer name, image, expert notes or access token
+    * identical (location, crop, disease) reports collapsed into one point with a count
+
+    Aggregation happens in Python rather than SQL so the rounding and grouping behave
+    identically on SQLite and PostgreSQL.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    query = select(Report).where(Report.created_at >= since)
+    if crop_type:
+        query = query.where(Report.crop_type == crop_type)
+    if disease:
+        query = query.where(Report.predicted_disease == disease)
+    if risk:
+        query = query.where(Report.weather_risk_level == risk)
+    if region_name:
+        query = query.where(Report.region_name.ilike(f"%{region_name}%"))
+
+    rows = db.execute(query.order_by(Report.created_at.desc()).limit(5000)).scalars().all()
+
+    buckets: Dict[tuple, dict] = {}
+    by_crop: Dict[str, int] = {}
+    by_risk: Dict[str, int] = {}
+    by_disease: Dict[str, int] = {}
+    hotspots: Dict[tuple, dict] = {}
+
+    for report in rows:
+        latitude = round(float(report.latitude), 2)
+        longitude = round(float(report.longitude), 2)
+        risk_level = report.weather_risk_level.value if report.weather_risk_level else None
+
+        key = (latitude, longitude, report.crop_type, report.predicted_disease, risk_level)
+        entry = buckets.get(key)
+        if entry is None:
+            buckets[key] = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "crop_type": report.crop_type,
+                "predicted_disease": report.predicted_disease,
+                "weather_risk_level": risk_level,
+                "status": report.status.value,
+                "reports": 1,
+                "latest_at": report.created_at.isoformat() if report.created_at else "",
+            }
+        else:
+            entry["reports"] += 1
+
+        by_crop[report.crop_type] = by_crop.get(report.crop_type, 0) + 1
+        if risk_level:
+            by_risk[risk_level] = by_risk.get(risk_level, 0) + 1
+        by_disease[report.predicted_disease] = by_disease.get(report.predicted_disease, 0) + 1
+
+        hot_key = (latitude, longitude)
+        hotspot = hotspots.get(hot_key)
+        if hotspot is None:
+            hotspots[hot_key] = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "region_name": report.region_name,
+                "reports": 1,
+            }
+        else:
+            hotspot["reports"] += 1
+
+    top_hotspots = sorted(hotspots.values(), key=lambda item: -item["reports"])[:10]
+
+    return schemas.OutbreakResponse(
+        points=[schemas.OutbreakPointOut(**point) for point in buckets.values()],
+        summary=schemas.OutbreakSummaryOut(
+            total_reports=len(rows),
+            points=len(buckets),
+            period_days=days,
+            by_crop=by_crop,
+            by_risk=by_risk,
+            by_disease=dict(sorted(by_disease.items(), key=lambda item: -item[1])[:10]),
+            hotspots=[schemas.OutbreakHotspotOut(**spot) for spot in top_hotspots],
+        ),
+        attribution="Weather data by Open-Meteo.com (CC BY 4.0). Coordinates rounded to ~1 km.",
+    )
+
+
 @app.get("/api/stats", response_model=schemas.StatsResponse, summary="Aggregate statistics")
 def get_stats(
     staff: Tuple[str, str] = Depends(security.require_staff),

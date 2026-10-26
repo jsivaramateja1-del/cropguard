@@ -377,3 +377,54 @@ def test_additive_migration_upgrades_an_older_database(tmp_path):
     finally:
         database.engine = original_engine
         database.DATABASE_URL = original_url
+
+
+# ---------------------------------------------------------------------------
+# Public outbreak map
+# ---------------------------------------------------------------------------
+def test_outbreaks_are_public_but_anonymised(client, leaf):
+    """The map is public; it must not leak who reported what."""
+    _create(client, leaf)
+    _create(client, leaf)
+
+    response = client.get("/api/outbreaks")
+    assert response.status_code == 200, "the map must not require a staff token"
+    body = response.json()
+
+    assert body["summary"]["total_reports"] == 2
+    # Identical location/crop/disease collapses into one point with a count.
+    assert body["summary"]["points"] == 1
+    assert body["points"][0]["reports"] == 2
+
+    text = response.text
+    for forbidden in ("Ravi Kumar", "farmer_name", "owner_token", "access_token",
+                      "/uploads/", "expert_notes", "image_url"):
+        assert forbidden not in text, f"public map leaks {forbidden}"
+
+
+def test_outbreak_coordinates_are_rounded(client, leaf):
+    _create(client, leaf, latitude="16.50621", longitude="80.64809")
+    point = client.get("/api/outbreaks").json()["points"][0]
+    # ~1 km grid: a farm must not be pinpointed from a public endpoint.
+    assert point["latitude"] == 16.51
+    assert point["longitude"] == 80.65
+
+
+def test_outbreaks_summary_and_filters(client, leaf):
+    _create(client, leaf, crop_type="Tomato")
+    _create(client, leaf, crop_type="Rice")
+
+    payload = client.get("/api/outbreaks").json()
+    assert payload["summary"]["by_crop"] == {"Tomato": 1, "Rice": 1}
+    assert len(payload["summary"]["hotspots"]) >= 1
+    assert payload["summary"]["period_days"] == 90
+
+    filtered = client.get("/api/outbreaks", params={"crop_type": "Rice"}).json()
+    assert filtered["summary"]["total_reports"] == 1
+    assert filtered["points"][0]["crop_type"] == "Rice"
+
+
+def test_outbreaks_empty_database_is_valid(client):
+    payload = client.get("/api/outbreaks").json()
+    assert payload["points"] == []
+    assert payload["summary"]["total_reports"] == 0

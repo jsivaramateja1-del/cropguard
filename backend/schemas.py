@@ -152,6 +152,47 @@ class AuditEventOut(BaseModel):
         return as_utc(value).isoformat()
 
 
+class OutbreakPointOut(BaseModel):
+    """One anonymised, aggregated map point.
+
+    Deliberately carries no farmer name, no image URL, no expert notes and no token: the
+    map is public, so it shows *where disease is being reported*, never *who reported it*.
+    Coordinates are rounded before they leave the server.
+    """
+
+    latitude: float
+    longitude: float
+    crop_type: str
+    predicted_disease: str
+    weather_risk_level: Optional[str] = None
+    status: str
+    reports: int
+    latest_at: str
+
+
+class OutbreakHotspotOut(BaseModel):
+    latitude: float
+    longitude: float
+    region_name: Optional[str] = None
+    reports: int
+
+
+class OutbreakSummaryOut(BaseModel):
+    total_reports: int
+    points: int
+    period_days: int
+    by_crop: Dict[str, int]
+    by_risk: Dict[str, int]
+    by_disease: Dict[str, int]
+    hotspots: List[OutbreakHotspotOut]
+
+
+class OutbreakResponse(BaseModel):
+    points: List[OutbreakPointOut]
+    summary: OutbreakSummaryOut
+    attribution: str
+
+
 class ModelContractOut(BaseModel):
     """The single verified description of the deployed model.
 

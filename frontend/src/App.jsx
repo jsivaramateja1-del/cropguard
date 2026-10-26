@@ -1,6 +1,10 @@
+import { lazy, Suspense } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import { Leaf, ShieldAlert } from 'lucide-react'
 import DiagnosePage from './pages/DiagnosePage.jsx'
+// Leaflet is ~150 kB; loading it only when the map is opened keeps the diagnosis
+// page fast on a rural connection.
+const OutbreakMapPage = lazy(() => import('./pages/OutbreakMapPage.jsx'))
 import { Button } from './components/ui/button.jsx'
 
 /**
@@ -29,11 +33,18 @@ function Layout({ children }) {
             </span>
           </Link>
 
-          <nav aria-label="Main">
+          <nav aria-label="Main" className="flex items-center gap-1">
             <NavLink to="/" end>
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
                   Diagnose
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/outbreaks">
+              {({ isActive }) => (
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                  Outbreaks
                 </Button>
               )}
             </NavLink>
@@ -78,6 +89,20 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<DiagnosePage />} />
+        <Route
+          path="/outbreaks"
+          element={
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                  Loading the map…
+                </div>
+              }
+            >
+              <OutbreakMapPage />
+            </Suspense>
+          }
+        />
         <Route
           path="*"
           element={

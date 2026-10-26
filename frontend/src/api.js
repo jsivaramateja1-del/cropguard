@@ -215,6 +215,24 @@ export async function addFollowUp(reportId, reportToken, { conditionStatus, note
   }
 }
 
+/** Public, anonymised outbreak points for the map. No authentication required. */
+export async function fetchOutbreaks({ cropType, risk, disease, regionName, days } = {}) {
+  try {
+    const { data } = await api.get('/api/outbreaks', {
+      params: {
+        ...(cropType ? { crop_type: cropType } : {}),
+        ...(risk ? { risk } : {}),
+        ...(disease ? { disease } : {}),
+        ...(regionName ? { region_name: regionName } : {}),
+        ...(days ? { days } : {}),
+      },
+    })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
 export async function fetchWeather({ latitude, longitude, disease }) {
   try {
     const { data } = await api.get('/api/weather', {

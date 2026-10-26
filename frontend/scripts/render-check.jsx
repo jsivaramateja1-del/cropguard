@@ -32,6 +32,7 @@ const CHECKS = [
   ['component attribution', 'Radix UI'],
   ['safety disclaimer', 'potential diagnosis'],
   ['crop coverage note', 'Wheat has no trained classes'],
+  ['outbreak nav', 'Outbreaks'],
 ]
 
 let failures = 0
@@ -64,6 +65,15 @@ const notFound = renderToString(
 const has404 = notFound.includes('Page not found')
 if (!has404) failures += 1
 console.log(`${has404 ? 'PASS' : 'FAIL'}  unknown route renders a 404`)
+
+const mapHtml = renderToString(
+  <MemoryRouter initialEntries={['/outbreaks']}>
+    <App />
+  </MemoryRouter>,
+)
+const mapFallback = mapHtml.includes('Loading the map')
+console.log(`${mapFallback ? 'PASS' : 'FAIL'}  map route lazy-loads behind a fallback`)
+if (!mapFallback) failures += 1
 
 console.log(`\nrendered ${html.length} bytes`)
 if (failures > 0) {
