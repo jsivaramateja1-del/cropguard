@@ -11,3 +11,9 @@ numpy>=1.24
 onnxscript>=0.2
 onnx>=1.16
 onnxruntime>=1.17
+
+# Fine-tuning a Hugging Face model (ml_training/train_hf.py). Not needed for the
+# PyTorch pipeline; install only if you want the Hugging Face route.
+transformers>=4.44,<5
+safetensors>=0.4
+accelerate>=0.34

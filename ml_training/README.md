@@ -202,6 +202,44 @@ confidence, and — the number that matters — the accuracy gap between predict
 above and below 0.75. A large gap means the gate separates real errors from reliable
 ones. No gap means the threshold is decorative and should be re-chosen from data.
 
+## 5b. Fine-tuning a Hugging Face model instead
+
+`train_hf.py` trains a Hugging Face image classifier on the same 16 labels, using the
+same dataset discovery and split as `train_kaggle.py`, and exports the same ONNX
+contract. The backend needs no change: it loads whatever ONNX + `class_names.json` pair
+is in `backend/model/`.
+
+Why not just download a model from the Hub? Every plant-disease model there is a
+38-class PlantVillage model — tomato and potato, **no rice**, and label strings that do
+not match ours (`"Apple Scab"` rather than `Crop___Condition`). The backend deliberately
+refuses a graph whose output width disagrees with the label file, so adopting one
+directly is not possible without a mapping layer. Fine-tuning one as a *starting point*
+avoids all of that.
+
+Measured candidates (ONNX Runtime, 2 vCPU, this machine):
+
+| Base model | ONNX | Peak RAM | Inference | Notes |
+|---|---|---|---|---|
+| `linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification` | ~9 MB | ~180 MB | ~30 ms | default; keeps free-tier speed |
+| `rodynaemad/plant-disease-dinov2-small` | 85 MB | 274 MB | 618 ms | better features, 31x slower |
+| ViT-base plant models | 343 MB | won't fit 512 MB | — | not usable on Render Free |
+
+For reference, the shipped MobileNetV3 is 16.8 MB, 151 MB peak, 19.9 ms.
+
+```bash
+python train_hf.py \
+    --data-dirs "/kaggle/input/plantvillage-dataset/color" \
+                "/kaggle/input/rice-leaf-diseases:Rice" \
+    --crops Tomato Potato Rice --allow-missing-classes \
+    --epochs 8 --batch-size 64 --out-dir /kaggle/working/export_hf
+```
+
+Swap the base with `--model rodynaemad/plant-disease-dinov2-small` for the accuracy
+option, or `--freeze-backbone` to train only the new head.
+
+Keep whichever model wins. The shipped MobileNetV3 scores 0.9976 validation and 36/36
+on labelled photos, so a replacement has to beat that to be worth the swap.
+
 ## 6. Development artifact (no GPU needed)
 
 ```bash
