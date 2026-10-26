@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
 import { Alert } from '../components/ui/alert.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import PhotoThumbnail from '../components/PhotoThumbnail.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 
 const CONDITIONS = [
@@ -38,12 +39,16 @@ function Timeline({ report }) {
       title: 'Photo analysed',
       detail: `${conditionOf(report.predicted_disease)} at ${Math.round(report.confidence * 100)}% confidence`,
       icon: Sprout,
+      // The analysed photo is shown on the report card above; repeating it here would
+      // just be the same picture twice.
+      photo: null,
     },
     ...(report.follow_ups || []).map((entry) => ({
       at: entry.created_at,
       title: `Follow-up: ${entry.condition_status.replace(/_/g, ' ').toLowerCase()}`,
       detail: entry.farmer_notes || 'No notes',
       icon: History,
+      photo: entry.followup_image_url,
     })),
     ...(report.audit_events || []).map((entry) => ({
       at: entry.created_at,
@@ -65,10 +70,18 @@ function Timeline({ report }) {
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted">
               <Icon size={12} aria-hidden="true" />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold">{entry.title}</p>
               <p className="text-2xs leading-relaxed text-muted-foreground">{entry.detail}</p>
               <p className="text-2xs text-muted-foreground/80">{when(entry.at)}</p>
+              {entry.photo ? (
+                <PhotoThumbnail
+                  src={entry.photo}
+                  alt={`Photo for: ${entry.title}`}
+                  size="sm"
+                  className="mt-1.5"
+                />
+              ) : null}
             </div>
           </li>
         )
@@ -204,13 +217,20 @@ export default function FollowUpPage() {
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <CardTitle className="text-sm">
-                    {conditionOf(report.predicted_disease)}
-                  </CardTitle>
-                  <CardDescription>
-                    {report.crop_type} · {report.reference || `#${report.id}`}
-                  </CardDescription>
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <PhotoThumbnail
+                    src={report.image_url}
+                    alt={`Leaf submitted for ${report.crop_type}`}
+                    size="md"
+                  />
+                  <div className="min-w-0">
+                    <CardTitle className="text-sm">
+                      {conditionOf(report.predicted_disease)}
+                    </CardTitle>
+                    <CardDescription>
+                      {report.crop_type} · {report.reference || `#${report.id}`}
+                    </CardDescription>
+                  </div>
                 </div>
                 <StatusBadge status={report.status} />
               </div>

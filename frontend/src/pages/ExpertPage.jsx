@@ -24,6 +24,7 @@ import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
 import { Alert } from '../components/ui/alert.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import PhotoThumbnail from '../components/PhotoThumbnail.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 
 const TOKEN_KEY = 'cropguard.expert_token'
@@ -78,7 +79,9 @@ export default function ExpertPage() {
       setError(null)
       try {
         const data = await fetchReviewQueue(activeToken)
-        setQueue(data.reports || [])
+        // The API returns ReportListOut: { total, limit, offset, items }. Reading
+        // `reports` here left the queue permanently empty — caught by the end-to-end test.
+        setQueue(data.items || [])
       } catch (loadError) {
         setError(loadError)
         if (loadError.status === 401 || loadError.status === 403) {
@@ -358,13 +361,22 @@ export default function ExpertPage() {
       {selected ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">
-              Reviewing {selected.reference || `#${selected.id}`}
-            </CardTitle>
-            <CardDescription>
-              {selected.crop_type} · {conditionOf(selected.predicted_disease)} ·{' '}
-              {Math.round(selected.confidence * 100)}% confidence
-            </CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <CardTitle className="text-sm">
+                  Reviewing {selected.reference || `#${selected.id}`}
+                </CardTitle>
+                <CardDescription>
+                  {selected.crop_type} · {conditionOf(selected.predicted_disease)} ·{' '}
+                  {Math.round(selected.confidence * 100)}% confidence
+                </CardDescription>
+              </div>
+              <PhotoThumbnail
+                src={selected.image_url}
+                alt={`Leaf submitted for ${selected.crop_type}`}
+                size="md"
+              />
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-3">
@@ -546,14 +558,21 @@ export default function ExpertPage() {
           <Card key={report.id}>
             <CardContent className="space-y-2 p-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">
-                    {conditionOf(report.predicted_disease)}
-                  </p>
-                  <p className="text-2xs text-muted-foreground">
-                    {report.crop_type} · {report.reference || `#${report.id}`} ·{' '}
-                    {report.region_name || 'location not named'}
-                  </p>
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <PhotoThumbnail
+                    src={report.image_url}
+                    alt={`Leaf submitted for ${report.crop_type}`}
+                    size="sm"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {conditionOf(report.predicted_disease)}
+                    </p>
+                    <p className="text-2xs text-muted-foreground">
+                      {report.crop_type} · {report.reference || `#${report.id}`} ·{' '}
+                      {report.region_name || 'location not named'}
+                    </p>
+                  </div>
                 </div>
                 <StatusBadge status={report.status} />
               </div>

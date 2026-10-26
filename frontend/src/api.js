@@ -33,6 +33,20 @@ export function setAuthToken(token) {
   }
 }
 
+/**
+ * Resolve a stored-image path to an absolute URL.
+ *
+ * The API returns paths relative to itself (`/api/images/<token>`) so that the same
+ * payload works whether the backend is on localhost or Render. Anything already absolute
+ * (a Cloudinary URL, for instance) is returned untouched.
+ */
+export function imageUrl(path) {
+  if (!path) return null
+  if (/^https?:\/\//i.test(path)) return path
+  const base = API_BASE_URL.replace(/\/+$/, '')
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   // Generous: the free backend can take a minute to wake from idle.

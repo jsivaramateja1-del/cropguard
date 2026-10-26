@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { analyzeNeedsReview, analyzeNotALeaf, analyzeVerified, mockApi } from './mocks.js'
+import {
+  analyzeNeedsReview,
+  analyzeNotALeaf,
+  analyzeVerified,
+  mockApi,
+  reportForFollowUp,
+} from './mocks.js'
 
 /**
  * The farmer journey, against a mocked API.
@@ -282,6 +288,66 @@ test.describe('expert page', () => {
     await mockApi(page)
     await page.goto('/expert')
     await expect(page.getByText(/expert access requests/i)).toHaveCount(0)
+  })
+})
+
+test.describe('stored photos', () => {
+  test('the follow-up page shows the leaf and the follow-up photo', async ({ page }) => {
+    await mockApi(page, {
+      followUpReport: {
+        ...reportForFollowUp,
+        follow_ups: [
+          {
+            id: 1,
+            report_id: 42,
+            condition_status: 'Worsening',
+            farmer_notes: 'Spreading to the next row.',
+            followup_image_url: '/api/images/followup1',
+            created_at: '2026-10-26T18:00:00+00:00',
+          },
+        ],
+      },
+    })
+    await page.goto('/follow-up')
+
+    await page.getByLabel(/report reference/i).fill('CG-00042')
+    await page.getByLabel(/access code/i).fill('token')
+    await page.getByRole('button', { name: /open report/i }).click()
+
+    // The photo that was analysed, plus the one attached to the follow-up.
+    const images = page.locator('img[src*="/api/images/"]')
+    await expect(images).toHaveCount(2)
+    await expect(images.first()).toHaveAttribute('src', /\/api\/images\/abc123$/)
+  })
+
+  test('a missing photo degrades to a placeholder, not a broken image', async ({ page }) => {
+    await mockApi(page, {
+      followUpReport: { ...reportForFollowUp, image_url: null, follow_ups: [], audit_events: [] },
+    })
+    await page.goto('/follow-up')
+
+    await page.getByLabel(/report reference/i).fill('CG-00042')
+    await page.getByLabel(/access code/i).fill('token')
+    await page.getByRole('button', { name: /open report/i }).click()
+
+    await expect(page.getByRole('img', { name: /no photo available/i })).toBeVisible()
+  })
+
+  test('an expert sees the photo of the leaf they are judging', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/expert')
+
+    // Sign in with the staff token, which needs no account round-trip.
+    await page.getByRole('button', { name: /staff token/i }).click()
+    await page.getByLabel(/staff token/i).fill('test-staff-token')
+    await page.getByRole('button', { name: /sign in with token/i }).click()
+
+    await expect(page.getByText('CG-00042')).toBeVisible()
+    const thumb = page.locator('img[src*="/api/images/"]').first()
+    await expect(thumb).toBeVisible()
+    await expect(thumb).toHaveAttribute('src', /\/api\/images\/abc123$/)
+    // The image really loaded (naturalWidth is 0 for a broken image).
+    expect(await thumb.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0)
   })
 })
 

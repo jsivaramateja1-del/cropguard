@@ -174,6 +174,28 @@ export const outbreaks = {
   attribution: 'Weather data by Open-Meteo.com (CC BY 4.0).',
 }
 
+/** One row of the staff review queue, as the expert page receives it. */
+export const reviewQueue = {
+  total: 1,
+  items: [
+    {
+      id: 42,
+      reference: 'CG-00042',
+      crop_type: 'Tomato',
+      image_url: '/api/images/abc123',
+      predicted_disease: 'Tomato___Late_blight',
+      confidence: 0.68,
+      status: 'Pending_Expert_Review',
+      region_name: 'Kelambakkam',
+      created_at: '2026-10-26T11:44:00+00:00',
+    },
+  ],
+}
+
+// A 1x1 PNG, so the mocked image endpoint returns real bytes and the <img> actually loads.
+const TINY_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
 export const reportForFollowUp = {
   ...analyzeVerified.report,
   status: 'Expert_Confirmed',
@@ -214,6 +236,7 @@ export async function mockApi(page, overrides = {}) {
     analyze: analyzeVerified,
     outbreaks,
     followUpReport: reportForFollowUp,
+    reviewQueue,
     ...overrides,
   }
 
@@ -262,6 +285,22 @@ export async function mockApi(page, overrides = {}) {
       status: 201,
       contentType: 'application/json',
       body: JSON.stringify({ id: 2, report_id: 42, condition_status: 'Recovering' }),
+    }),
+  )
+  await page.route('**/api/images/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(TINY_PNG_BASE64, 'base64'),
+    }),
+  )
+  // Exact path plus optional query — a plain glob would also catch
+  // /api/reports/by-reference/... and /api/reports/<id>/followup.
+  await page.route(/\/api\/reports(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(responses.reviewQueue),
     }),
   )
   await page.route('**/api/auth/**', (route) =>

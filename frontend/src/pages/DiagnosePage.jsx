@@ -14,6 +14,7 @@ import CropPicker from '../components/CropPicker.jsx'
 import ImagePicker from '../components/ImagePicker.jsx'
 import LocationField from '../components/LocationField.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import PhotoThumbnail from '../components/PhotoThumbnail.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 import AdvisoryPanel from '../components/AdvisoryPanel.jsx'
 import WeatherRiskCard from '../components/WeatherRiskCard.jsx'
@@ -426,13 +427,17 @@ export default function DiagnosePage() {
                   <h1 className="mt-0.5 text-xl font-bold leading-tight">{diagnosis.condition}</h1>
                   <p className="mt-0.5 text-sm text-muted-foreground">{diagnosis.crop}</p>
                 </div>
+                {/* The local preview is instant; the stored copy is what remains after a
+                    reload, so it is the fallback rather than the primary. */}
                 {previewUrl ? (
                   <img
                     src={previewUrl}
                     alt="Analysed leaf"
                     className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
                   />
-                ) : null}
+                ) : (
+                  <PhotoThumbnail src={report.image_url} alt="Analysed leaf" size="md" />
+                )}
               </div>
 
               <StatusBadge status={report.status} showHint />

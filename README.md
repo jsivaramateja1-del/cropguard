@@ -38,6 +38,7 @@ down is equally honest.
 | Expert approval | Farmers apply; an admin approves, which promotes the account and invalidates old tokens |
 | Follow-up | Reference + access code, condition status, optional photo, full timeline |
 | Outbreak map | Public `/api/outbreaks` with coordinates rounded to ~1 km; Leaflet, lazy-loaded |
+| Stored photos | Leaf images kept in Postgres, served from `/api/images/{token}`, shown on the result, expert queue and follow-up timeline |
 | Security | Anonymous farmers with scoped tokens, bearer-token staff auth, ownership checks, rate limiting, content-based upload validation |
 
 ## Measured, not claimed
