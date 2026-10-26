@@ -458,7 +458,8 @@ def health() -> dict:
                     else {"applies": False}
                 ),
                 "hint": (
-                    database.classify_db_error(database.INIT_ERROR)[1]
+                    database.credential_diagnostics().get("hint")
+                    or database.classify_db_error(database.INIT_ERROR)[1]
                     if database.INIT_ERROR
                     else (None if db_ok else "The database answered but the query failed.")
                 ),

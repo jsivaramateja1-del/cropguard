@@ -148,6 +148,49 @@ INIT_ERROR: Optional[str] = None
 INIT_REASON: Optional[str] = None
 
 
+def credential_diagnostics() -> dict:
+    """Detect a malformed DATABASE_URL before wasting time connecting.
+
+    The failure this catches is subtle: an unencoded ``@`` (or ``#``, ``/``, ``?``) in the
+    password makes the URL parser treat that character as the username/host boundary. The
+    password is then truncated and the remainder of the password is glued onto the
+    hostname, which of course never resolves. The error surfaces as "could not translate
+    host name", pointing at the wrong thing entirely.
+
+    Detected here by checking whether the parsed host is a legal DNS name.
+    """
+    if engine.dialect.name == "sqlite":
+        return {"applies": False}
+
+    raw = DATABASE_URL
+    if "[" in raw and "]" in raw:
+        return {
+            "applies": True,
+            "problem": "placeholder_not_replaced",
+            "hint": (
+                "DATABASE_URL still contains square brackets — the [YOUR-PASSWORD] "
+                "placeholder was not replaced. Delete the brackets and put the real "
+                "password there."
+            ),
+        }
+
+    host = engine.url.host or ""
+    illegal = sorted({character for character in host if not (character.isalnum() or character in ".-")})
+    if illegal:
+        return {
+            "applies": True,
+            "problem": "password_not_url_encoded",
+            "hint": (
+                "The hostname parsed out of DATABASE_URL contains characters that cannot "
+                "appear in a DNS name (" + " ".join(illegal) + "). This almost always "
+                "means the password contains an unencoded special character — usually "
+                "'@' — which moved the username/host boundary. Percent-encode it: "
+                "@ -> %40, # -> %23, / -> %2F, ? -> %3F, : -> %3A, $ -> %24, ! -> %21."
+            ),
+        }
+    return {"applies": True, "problem": None}
+
+
 def host_diagnostics() -> dict:
     """Does the configured host resolve, and to which address family?
 
@@ -226,6 +269,13 @@ def classify_db_error(message: str) -> tuple:
 def try_init_db() -> Optional[str]:
     """Initialise the database, returning an error description instead of raising."""
     global INIT_ERROR, INIT_REASON
+    # A malformed URL cannot be fixed by retrying; report it immediately and clearly.
+    credentials = credential_diagnostics()
+    if credentials.get("problem"):
+        INIT_ERROR = f"ConfigurationError: {credentials['problem']}"
+        INIT_REASON = credentials["problem"]
+        logger.error("DATABASE_URL is malformed: %s", credentials["hint"])
+        return INIT_ERROR
     try:
         init_db()
         INIT_ERROR = None

@@ -519,3 +519,64 @@ def test_host_diagnostics_is_skipped_for_sqlite():
     import database
 
     assert database.host_diagnostics() == {"applies": False}
+
+
+# ---------------------------------------------------------------------------
+# Malformed DATABASE_URL detection
+# ---------------------------------------------------------------------------
+def test_unencoded_at_in_password_is_diagnosed(monkeypatch):
+    """An '@' in the password shifts the username/host boundary and breaks DNS."""
+    import database
+    from sqlalchemy import create_engine
+
+    original_engine, original_url = database.engine, database.DATABASE_URL
+    bad = (
+        "postgresql://postgres.abc:Learn@Sc!ds543$"
+        "aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+    )
+    monkeypatch.setattr(database, "engine", create_engine(bad))
+    monkeypatch.setattr(database, "DATABASE_URL", bad)
+    try:
+        result = database.credential_diagnostics()
+        assert result["problem"] == "password_not_url_encoded"
+        assert "%40" in result["hint"]
+        # And it short-circuits startup with that reason rather than a DNS error.
+        monkeypatch.setattr(database, "INIT_ERROR", None)
+        monkeypatch.setattr(database, "INIT_REASON", None)
+        assert database.try_init_db() is not None
+        assert database.INIT_REASON == "password_not_url_encoded"
+    finally:
+        database.engine, database.DATABASE_URL = original_engine, original_url
+        database.INIT_ERROR = None
+        database.INIT_REASON = None
+
+
+def test_encoded_password_is_accepted(monkeypatch):
+    import database
+    from sqlalchemy import create_engine
+
+    good = (
+        "postgresql://postgres.abc:Learn%40Sc%21ds543%24"
+        "@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+    )
+    original_engine, original_url = database.engine, database.DATABASE_URL
+    monkeypatch.setattr(database, "engine", create_engine(good))
+    monkeypatch.setattr(database, "DATABASE_URL", good)
+    try:
+        assert database.credential_diagnostics()["problem"] is None
+    finally:
+        database.engine, database.DATABASE_URL = original_engine, original_url
+
+
+def test_unreplaced_placeholder_is_diagnosed(monkeypatch):
+    import database
+    from sqlalchemy import create_engine
+
+    bad = "postgresql://postgres.abc:[YOUR-PASSWORD]@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+    original_engine, original_url = database.engine, database.DATABASE_URL
+    monkeypatch.setattr(database, "engine", create_engine(bad))
+    monkeypatch.setattr(database, "DATABASE_URL", bad)
+    try:
+        assert database.credential_diagnostics()["problem"] == "placeholder_not_replaced"
+    finally:
+        database.engine, database.DATABASE_URL = original_engine, original_url
