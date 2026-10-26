@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import socket
-from typing import Generator
+from typing import Generator, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import create_engine, event

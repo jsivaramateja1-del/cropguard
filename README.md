@@ -48,7 +48,8 @@ down is equally honest.
 - **0.9976** best validation accuracy, **0.9676** macro recall on a 20,432-image training run
   (Tesla T4, 12 epochs) — but see the leakage caveat in [docs/model-card.md](docs/model-card.md)
 - Confidence calibration measured: median 0.907, 5th percentile 0.880 — [docs/calibration.md](docs/calibration.md)
-- **141** backend tests, **14** frontend error-handling checks, **21** render checks, 4 CI jobs
+- **185** backend tests, **50** end-to-end checks (desktop + mobile), **14** error-handling and **22** render checks
+- **7 CI jobs**: backend tests, contract, syntax, frontend build, end-to-end, lint, dependency audit
 
 ## Known limits
 
@@ -137,6 +138,24 @@ cd frontend && npx playwright install chromium && npm run build && npm run test:
 # Against the real deployment — the only suite that can catch deployment-level faults
 # such as a missing SPA rewrite or a CORS misconfiguration.
 E2E_BASE_URL=https://cropguard-blush.vercel.app npm run test:e2e:live
+```
+
+## Quality gates
+
+Every push runs seven jobs. Two of them exist because they found real defects:
+
+- **Lint** — `ruff` (E, F, W, B, I) on the backend and ESLint on the frontend. Ruff's
+  `undefined-name` rule caught a live bug: the risk filter on the staff queue raised
+  `NameError` and returned 500. ESLint caught two genuinely unused imports.
+- **Dependency audit** — `pip-audit` against the deployed requirement set. It found 74
+  advisories across `Pillow`, `PyJWT` and `python-multipart`; upgrading to
+  `Pillow 13.0.0`, `PyJWT 2.15.0` and `python-multipart 0.0.31` cleared all of them with
+  the full test suite still passing.
+
+```bash
+cd backend  && ruff check .                    # backend lint
+cd frontend && npx eslint .                    # frontend lint
+pip-audit -r backend/requirements-deploy.txt --no-deps --disable-pip
 ```
 
 ## Environment

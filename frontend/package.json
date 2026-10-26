@@ -13,7 +13,9 @@
     "test:render": "esbuild scripts/render-check.jsx --bundle --platform=node --format=cjs --jsx=automatic --loader:.jsx=jsx --loader:.css=empty --loader:.png=dataurl --outfile=node_modules/.cache/render-check.cjs --log-level=error && node node_modules/.cache/render-check.cjs",
     "test:e2e": "playwright test",
     "test:e2e:live": "playwright test e2e/live-smoke.spec.js",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "eslint .",
+    "audit": "pip-audit -r ../backend/requirements-deploy.txt --no-deps --disable-pip"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.1",
@@ -33,11 +35,16 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.3",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "vite": "^6.0.7",
-    "@playwright/test": "^1.49.1"
+    "vite": "^6.0.7"
   }
 }

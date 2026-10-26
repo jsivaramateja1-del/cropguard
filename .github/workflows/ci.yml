@@ -117,3 +117,42 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ruff
+        run: pip install ruff==0.8.4
+      - name: Ruff (backend)
+        run: ruff check backend --config backend/ruff.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: ESLint (frontend)
+        working-directory: frontend
+        run: npx eslint .
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pip-audit
+        run: pip install pip-audit==2.7.3
+      - name: Audit the deployed dependency set
+        # Fails the build on any advisory with a fix available. Suppressing a finding
+        # requires changing a version, not adding an ignore.
+        run: pip-audit -r backend/requirements-deploy.txt --no-deps --disable-pip

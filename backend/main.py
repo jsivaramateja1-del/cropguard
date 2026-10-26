@@ -32,13 +32,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 import advisory as advisory_module
-import schemas
-import storage
 import auth
 import database
+import schemas
 import security
+import storage
+import weather_risk
 from config import settings
-from database import database_info, get_db, init_db, try_init_db
+from database import database_info, get_db, try_init_db
 from inference import (
     InvalidImage,
     ModelUnavailable,
@@ -47,18 +48,18 @@ from inference import (
     open_image,
 )
 from models import (
+    CROP_TYPES,
     AuditEvent,
     ExpertApplication,
-    ReportImage,
-    User,
-    CROP_TYPES,
     FollowUp,
     FollowUpCondition,
     Report,
+    ReportImage,
     ReportStatus,
+    User,
+    WeatherRiskLevel,
 )
 from storage import ALLOWED_CONTENT_TYPES, StorageError
-import weather_risk
 from weather_risk import assess_location
 
 logging.basicConfig(
@@ -154,7 +155,8 @@ def _read_upload(upload: UploadFile) -> bytes:
     return b"".join(chunks)
 
 
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+# Accepted decoded formats. The content-type set itself is defined once, in storage.py,
+# and imported above; a second definition here shadowed it.
 ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
@@ -522,15 +524,13 @@ def health() -> dict:
     model = service.describe()
 
     db_ok = True
-    db_error = None
     try:
         from database import SessionLocal
 
         with SessionLocal() as session:
             session.execute(select(func.count()).select_from(Report))
-    except Exception as error:  # noqa: BLE001 - health must never raise
+    except Exception:  # noqa: BLE001 - health must never raise
         db_ok = False
-        db_error = f"{type(error).__name__}"
 
     storage_status = storage.storage_status()
     weather_status = weather_risk.weather_status()

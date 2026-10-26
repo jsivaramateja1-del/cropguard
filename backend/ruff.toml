@@ -1,0 +1,27 @@
+# Ruff configuration for the CropGuard backend.
+#
+# The rule set is deliberately narrow: correctness rules that catch real defects, not
+# style opinions that generate churn. F821 (undefined-name) alone found a live bug — the
+# risk filter on the staff queue raised NameError and returned 500.
+
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes: undefined names, unused imports, shadowing
+  "W",    # pycodestyle warnings
+  "B",    # bugbear: likely bugs (mutable defaults, dead code paths)
+  "I",    # import order
+]
+ignore = [
+  # FastAPI's dependency injection is built on calls in default arguments:
+  # `db: Session = Depends(get_db)`. This is the framework's idiom, not a bug.
+  "B008",
+]
+
+[lint.per-file-ignores]
+# Tests assert on long call chains and use fixtures as arguments; strict import order and
+# line length add noise without catching anything.
+"tests/*" = ["E501"]

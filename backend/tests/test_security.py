@@ -354,7 +354,6 @@ def test_additive_migration_upgrades_an_older_database(tmp_path):
     connection.commit()
     connection.close()
 
-    import importlib
 
     import database
 
@@ -443,10 +442,10 @@ def test_api_starts_and_reports_an_unreachable_database(monkeypatch):
     during startup and uvicorn aborted. The API should start, say the database is down,
     and keep serving everything that does not need storage.
     """
-    import database
     from sqlalchemy import create_engine
-
     from sqlalchemy.orm import sessionmaker
+
+    import database
 
     bad_engine = create_engine("postgresql://u:p@127.0.0.1:1/none")
     original_engine = database.engine
@@ -485,8 +484,9 @@ def test_host_diagnostics_identifies_an_ipv6_only_host(monkeypatch):
     """Supabase's direct host is AAAA-only; Render is IPv4-only. That must be visible."""
     import socket as socket_module
 
-    import database
     from sqlalchemy import create_engine
+
+    import database
 
     original = database.engine
     monkeypatch.setattr(
@@ -529,8 +529,9 @@ def test_host_diagnostics_is_skipped_for_sqlite():
 # ---------------------------------------------------------------------------
 def test_unencoded_at_in_password_is_diagnosed(monkeypatch):
     """An '@' in the password shifts the username/host boundary and breaks DNS."""
-    import database
     from sqlalchemy import create_engine
+
+    import database
 
     original_engine, original_url = database.engine, database.DATABASE_URL
     bad = (
@@ -555,8 +556,9 @@ def test_unencoded_at_in_password_is_diagnosed(monkeypatch):
 
 
 def test_encoded_password_is_accepted(monkeypatch):
-    import database
     from sqlalchemy import create_engine
+
+    import database
 
     good = (
         "postgresql://postgres.abc:Learn%40Sc%21ds543%24"
@@ -572,8 +574,9 @@ def test_encoded_password_is_accepted(monkeypatch):
 
 
 def test_unreplaced_placeholder_is_diagnosed(monkeypatch):
-    import database
     from sqlalchemy import create_engine
+
+    import database
 
     bad = "postgresql://postgres.abc:[YOUR-PASSWORD]@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
     original_engine, original_url = database.engine, database.DATABASE_URL
@@ -663,3 +666,18 @@ def test_health_reports_which_build_is_live(client):
     assert body["build"]["environment"] in {"local", "render", "vercel"}
     # A commit SHA is public; the build block must not smuggle anything else in.
     assert set(body["build"]) == {"commit", "environment"}
+
+
+def test_report_risk_filter_works(client, leaf):
+    """Ruff caught a NameError here: the risk filter crashed with a 500.
+
+    Nothing exercised it before, because the other filter tests only used crop_type.
+    """
+    _create(client, leaf)
+    for level in ("Low", "Moderate", "High", "Critical"):
+        response = client.get("/api/reports", params={"risk": level}, headers=EXPERT)
+        assert response.status_code == 200, f"{level}: {response.text}"
+
+    invalid = client.get("/api/reports", params={"risk": "Extreme"}, headers=EXPERT)
+    assert invalid.status_code == 422
+    assert "Unknown risk level" in invalid.json()["detail"]

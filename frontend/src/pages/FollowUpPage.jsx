@@ -3,7 +3,6 @@ import { CalendarClock, History, Loader2, Search, Sprout, TriangleAlert, UserChe
 import { addFollowUp, fetchReportByReference } from '../api.js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card.jsx'
 import { Button } from '../components/ui/button.jsx'
-import { Badge } from '../components/ui/badge.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
 import { Alert } from '../components/ui/alert.jsx'

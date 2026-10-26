@@ -101,7 +101,7 @@ check('a non-axios throw is wrapped', () => {
 
 
 // --- connection-failure diagnosis -------------------------------------------
-import { diagnoseConnectionFailure, API_BASE_URL } from '../src/api.js'
+import { diagnoseConnectionFailure } from '../src/api.js'
 
 const REMOTE = 'https://cropguard-pzs9.onrender.com'
 

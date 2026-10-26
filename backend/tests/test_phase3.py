@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import datetime, timezone
-from typing import Optional
 
 import httpx
 import numpy as np
@@ -27,11 +25,10 @@ import inference
 import main
 import models
 import storage
-from config import settings
 import weather_risk
+from config import settings
 from inference import InvalidImage, ModelService, ModelUnavailable, open_image, preprocess_image
 from weather_risk import WeatherSnapshot, compute_risk
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -624,8 +621,14 @@ def test_report_filters(client, leaf_jpeg):
     _analyze(client, leaf_jpeg)
     _analyze(client, leaf_jpeg, request_expert_review="true")
 
-    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"status": "AI_Verified"}).json()["total"] == 1
-    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"status": "Pending_Expert_Review"}).json()["total"] == 1
+    verified = client.get(
+        "/api/reports", headers=EXPERT_AUTH, params={"status": "AI_Verified"}
+    ).json()
+    assert verified["total"] == 1
+    pending = client.get(
+        "/api/reports", headers=EXPERT_AUTH, params={"status": "Pending_Expert_Review"}
+    ).json()
+    assert pending["total"] == 1
     assert client.get("/api/reports", headers=EXPERT_AUTH, params={"crop_type": "Tomato"}).json()["total"] == 2
     assert client.get("/api/reports", headers=EXPERT_AUTH, params={"crop_type": "Rice"}).json()["total"] == 0
     assert client.get("/api/reports", headers=EXPERT_AUTH, params={"region_name": "Vijaya"}).json()["total"] == 2
@@ -1035,9 +1038,9 @@ def test_preflight_for_analyze_is_answered(client):
 
 def test_wildcard_origin_regex_is_used_when_configured(monkeypatch):
     """A Vercel deployment hostname must pass when the pattern is configured."""
-    from fastapi.testclient import TestClient
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.testclient import TestClient
 
     monkeypatch.setattr(
         main.settings, "frontend_origin", "http://localhost:5173,https://*.vercel.app",
