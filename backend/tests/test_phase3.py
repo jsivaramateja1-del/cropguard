@@ -35,6 +35,18 @@ from weather_risk import WeatherSnapshot, compute_risk
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+EXPERT_AUTH = {"Authorization": "Bearer test-expert-token"}
+ADMIN_AUTH = {"Authorization": "Bearer test-admin-token"}
+
+# Report id -> the one-time access token returned at creation. Tests use this the way a
+# farmer's browser would; the id alone deliberately grants nothing.
+TOKENS: dict = {}
+
+
+def _owner(report_id: int) -> dict:
+    return {"X-Report-Token": TOKENS[report_id]}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _create_schema():
     database.init_db()
@@ -70,12 +82,15 @@ def _clean_reports():
     """Each test starts from an empty reports table."""
     with database.SessionLocal() as session:
         session.query(models.FollowUp).delete()
+        session.query(models.AuditEvent).delete()
         session.query(models.Report).delete()
         session.commit()
+    TOKENS.clear()
     yield
 
 
 def _analyze(client: TestClient, leaf_jpeg: bytes, **overrides):
+    """POST /api/analyze and remember the access token the response returns."""
     data = {
         "crop_type": "Tomato",
         "farmer_name": "Ravi Kumar",
@@ -84,11 +99,15 @@ def _analyze(client: TestClient, leaf_jpeg: bytes, **overrides):
         "region_name": "Vijayawada",
     }
     data.update({k: str(v) for k, v in overrides.items()})
-    return client.post(
+    response = client.post(
         "/api/analyze",
         files={"image": ("leaf.jpg", leaf_jpeg, "image/jpeg")},
         data=data,
     )
+    if response.status_code == 200:
+        payload = response.json()
+        TOKENS[payload["report"]["id"]] = payload.get("access_token")
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +374,10 @@ def test_health_reports_every_component(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["database"]["connected"] is True
-    assert payload["model"]["available"] is True
-    assert payload["model"]["backend"] == "onnx"
-    assert payload["storage"]["backend"] in {"local", "cloudinary"}
+    assert payload["checks"]["database"]["ok"] is True
+    assert payload["checks"]["model"]["ok"] is True
+    assert payload["checks"]["model"]["backend"] == "onnx"
+    assert payload["checks"]["storage"]["backend"] in {"local", "cloudinary"}
     assert payload["advisory_entries"] == 21
 
 
@@ -385,11 +404,11 @@ def test_analyze_happy_path(client, leaf_jpeg):
 
 def test_analyze_persists_and_lists(client, leaf_jpeg):
     created = _analyze(client, leaf_jpeg).json()["report"]
-    listing = client.get("/api/reports").json()
+    listing = client.get("/api/reports", headers=EXPERT_AUTH).json()
     assert listing["total"] == 1
     assert listing["items"][0]["id"] == created["id"]
 
-    fetched = client.get(f"/api/reports/{created['id']}")
+    fetched = client.get(f"/api/reports/{created['id']}", headers=_owner(created['id']))
     assert fetched.status_code == 200
     assert fetched.json()["farmer_name"] == "Ravi Kumar"
     assert fetched.json()["follow_ups"] == []
@@ -398,7 +417,8 @@ def test_analyze_persists_and_lists(client, leaf_jpeg):
 def test_analyze_rejects_unsupported_crop(client, leaf_jpeg):
     response = _analyze(client, leaf_jpeg, crop_type="Banana")
     assert response.status_code == 422
-    assert "Unsupported crop" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "Unknown crop" in detail and "Banana" in detail
 
 
 def test_analyze_rejects_non_image(client):
@@ -412,8 +432,10 @@ def test_analyze_rejects_non_image(client):
             "longitude": "80.6",
         },
     )
-    assert response.status_code == 400
-    assert "Unsupported image type" in response.json()["detail"]
+    # 415 is the correct status for a wrong media type, and the declared type is checked
+    # before the bytes are decoded.
+    assert response.status_code == 415
+    assert "not an accepted image type" in response.json()["detail"]
 
 
 def test_analyze_rejects_corrupt_image(client):
@@ -464,6 +486,7 @@ def test_expert_confirm(client, leaf_jpeg):
     response = client.patch(
         f"/api/reports/{report['id']}/verify",
         json={"action": "confirm", "expert_name": "Dr Rao", "expert_notes": "Textbook early blight."},
+        headers=EXPERT_AUTH,
     )
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -485,6 +508,7 @@ def test_expert_correct(client, leaf_jpeg):
             "expert_name": "Dr Rao",
             "expert_notes": "Water-soaked margins; not early blight.",
         },
+        headers=EXPERT_AUTH,
     )
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -498,6 +522,7 @@ def test_expert_correction_must_match_the_crop(client, leaf_jpeg):
     response = client.patch(
         f"/api/reports/{report['id']}/verify",
         json={"action": "correct", "corrected_disease": "Rice___Brown_spot", "expert_name": "Dr Rao"},
+        headers=EXPERT_AUTH,
     )
     assert response.status_code == 422
     assert "does not belong to Tomato" in response.json()["detail"]
@@ -508,12 +533,14 @@ def test_second_review_is_rejected(client, leaf_jpeg):
     first = client.patch(
         f"/api/reports/{report['id']}/verify",
         json={"action": "confirm", "expert_name": "Dr Rao"},
+        headers=EXPERT_AUTH,
     )
     assert first.status_code == 200
 
     second = client.patch(
         f"/api/reports/{report['id']}/verify",
         json={"action": "confirm", "expert_name": "Dr Rao"},
+        headers=EXPERT_AUTH,
     )
     assert second.status_code == 409
 
@@ -523,6 +550,7 @@ def test_follow_up_creates_a_timeline_entry(client, leaf_jpeg):
 
     response = client.post(
         f"/api/reports/{report['id']}/followup",
+        headers=_owner(report['id']),
         data={"condition_status": "Worsening", "farmer_notes": "Spots spreading to upper leaves"},
     )
     assert response.status_code == 201, response.text
@@ -530,7 +558,7 @@ def test_follow_up_creates_a_timeline_entry(client, leaf_jpeg):
     assert followup["condition_status"] == "Worsening"
     assert followup["report_id"] == report["id"]
 
-    detail = client.get(f"/api/reports/{report['id']}").json()
+    detail = client.get(f"/api/reports/{report['id']}", headers=_owner(report['id'])).json()
     assert len(detail["follow_ups"]) == 1
     assert detail["follow_ups"][0]["farmer_notes"] == "Spots spreading to upper leaves"
 
@@ -539,6 +567,7 @@ def test_follow_up_with_image(client, leaf_jpeg):
     report = _analyze(client, leaf_jpeg).json()["report"]
     response = client.post(
         f"/api/reports/{report['id']}/followup",
+        headers=_owner(report['id']),
         data={"condition_status": "Recovering"},
         files={"image": ("followup.jpg", leaf_jpeg, "image/jpeg")},
     )
@@ -550,6 +579,7 @@ def test_follow_up_rejects_invalid_condition(client, leaf_jpeg):
     report = _analyze(client, leaf_jpeg).json()["report"]
     response = client.post(
         f"/api/reports/{report['id']}/followup",
+        headers=_owner(report['id']),
         data={"condition_status": "Improving"},
     )
     assert response.status_code == 422
@@ -566,7 +596,7 @@ def test_stats_aggregate(client, leaf_jpeg):
     _analyze(client, leaf_jpeg)
     _analyze(client, leaf_jpeg, request_expert_review="true")
 
-    response = client.get("/api/stats")
+    response = client.get("/api/stats", headers=EXPERT_AUTH)
     assert response.status_code == 200
     payload = response.json()
     assert payload["total_reports"] == 2
@@ -581,21 +611,21 @@ def test_report_filters(client, leaf_jpeg):
     _analyze(client, leaf_jpeg)
     _analyze(client, leaf_jpeg, request_expert_review="true")
 
-    assert client.get("/api/reports", params={"status": "AI_Verified"}).json()["total"] == 1
-    assert client.get("/api/reports", params={"status": "Pending_Expert_Review"}).json()["total"] == 1
-    assert client.get("/api/reports", params={"crop_type": "Tomato"}).json()["total"] == 2
-    assert client.get("/api/reports", params={"crop_type": "Rice"}).json()["total"] == 0
-    assert client.get("/api/reports", params={"region_name": "Vijaya"}).json()["total"] == 2
-    assert client.get("/api/reports", params={"disease": "Tomato___Late_blight"}).json()["total"] == 0
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"status": "AI_Verified"}).json()["total"] == 1
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"status": "Pending_Expert_Review"}).json()["total"] == 1
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"crop_type": "Tomato"}).json()["total"] == 2
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"crop_type": "Rice"}).json()["total"] == 0
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"region_name": "Vijaya"}).json()["total"] == 2
+    assert client.get("/api/reports", headers=EXPERT_AUTH, params={"disease": "Tomato___Late_blight"}).json()["total"] == 0
 
 
 def test_reports_pagination(client, leaf_jpeg):
     for _ in range(3):
         _analyze(client, leaf_jpeg)
-    page = client.get("/api/reports", params={"limit": 2, "offset": 0}).json()
+    page = client.get("/api/reports", headers=EXPERT_AUTH, params={"limit": 2, "offset": 0}).json()
     assert page["total"] == 3
     assert len(page["items"]) == 2
-    page2 = client.get("/api/reports", params={"limit": 2, "offset": 2}).json()
+    page2 = client.get("/api/reports", headers=EXPERT_AUTH, params={"limit": 2, "offset": 2}).json()
     assert len(page2["items"]) == 1
 
 
@@ -662,11 +692,13 @@ def test_timestamps_carry_utc_offset(client, leaf_jpeg):
     verified = client.patch(
         f"/api/reports/{report['id']}/verify",
         json={"action": "confirm", "expert_name": "Dr Rao"},
+        headers=EXPERT_AUTH,
     ).json()
     assert verified["verified_at"].endswith("+00:00"), verified["verified_at"]
 
     followup = client.post(
         f"/api/reports/{report['id']}/followup",
+        headers=_owner(report['id']),
         data={"condition_status": "Recovering"},
     ).json()
     assert followup["created_at"].endswith("+00:00"), followup["created_at"]
@@ -821,9 +853,10 @@ def test_api_key_switches_to_the_customer_endpoint(monkeypatch):
 
 def test_health_reports_weather_configuration(client):
     payload = client.get("/health").json()
-    assert "weather" in payload
-    assert payload["weather"]["endpoint"] in {"public", "customer"}
-    assert isinstance(payload["weather"]["cache_entries"], int)
+    weather = payload["checks"]["weather"]
+    assert "open-meteo" in weather["providers"]
+    assert isinstance(weather["cached_locations"], int)
+    assert weather["api_key_configured"] is False
 
 
 # ---------------------------------------------------------------------------

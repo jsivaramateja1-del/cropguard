@@ -181,9 +181,34 @@ export async function analyzeLeaf({
   }
 }
 
-export async function fetchReport(reportId) {
+/**
+ * Fetch one report. Access needs the one-time token returned when it was created —
+ * the report id alone deliberately grants nothing.
+ */
+export async function fetchReport(reportId, reportToken) {
   try {
-    const { data } = await api.get(`/api/reports/${reportId}`)
+    const { data } = await api.get(`/api/reports/${reportId}`, {
+      headers: reportToken ? { 'X-Report-Token': reportToken } : {},
+    })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** Add a follow-up observation to a report the caller owns. */
+export async function addFollowUp(reportId, reportToken, { conditionStatus, notes, file }) {
+  const form = new FormData()
+  form.append('condition_status', conditionStatus)
+  if (notes && notes.trim()) form.append('farmer_notes', notes.trim())
+  if (file) form.append('image', file, file.name || 'followup.jpg')
+  try {
+    const { data } = await api.post(`/api/reports/${reportId}/followup`, form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...(reportToken ? { 'X-Report-Token': reportToken } : {}),
+      },
+    })
     return data
   } catch (error) {
     throw toApiError(error)

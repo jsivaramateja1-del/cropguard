@@ -81,6 +81,19 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- staff authentication -------------------------------------------------
+    # Prototype-grade identity: one shared secret per role, supplied as a bearer token.
+    # No default is provided, so an unconfigured deployment has no privileged access at
+    # all rather than a default password. See docs/security.md for the upgrade path.
+    expert_token: str = ""
+    expert_name: str = "Agricultural expert"
+    admin_token: str = ""
+    admin_name: str = "Administrator"
+
+    # Costly analysis calls allowed per client per window.
+    analyze_rate_limit: int = 20
+    analyze_rate_window: int = 60
+
     # API
     # Comma-separated browser origins. An entry may contain a single wildcard label,
     # e.g. https://*.vercel.app, which is matched by regex instead of exactly.

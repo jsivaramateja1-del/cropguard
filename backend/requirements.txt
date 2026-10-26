@@ -25,6 +25,12 @@ pydantic-settings==2.7.0
 # --- outbound HTTP (Open-Meteo weather) --------------------------------------
 httpx==0.28.1
 
+# --- inference --------------------------------------------------------------
+# onnxruntime is a SEPARATE dependency from torch: importing torch does not make ONNX
+# Runtime available, and the deployed backend serves the ONNX artifact. Without this a
+# clean `pip install -r requirements.txt` starts an API that cannot load its model.
+onnxruntime==1.20.1
+
 # --- image handling ----------------------------------------------------------
 Pillow==11.1.0
 cloudinary==1.41.0

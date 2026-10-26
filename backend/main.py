@@ -23,9 +23,9 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session, selectinload
 import advisory as advisory_module
 import schemas
 import storage
+import security
 from config import settings
 from database import database_info, get_db, init_db
 from inference import (
@@ -43,7 +44,14 @@ from inference import (
     leaf_plausibility,
     open_image,
 )
-from models import CROP_TYPES, FollowUp, FollowUpCondition, Report, ReportStatus
+from models import (
+    AuditEvent,
+    CROP_TYPES,
+    FollowUp,
+    FollowUpCondition,
+    Report,
+    ReportStatus,
+)
 from storage import ALLOWED_CONTENT_TYPES, StorageError
 import weather_risk
 from weather_risk import assess_location
@@ -136,26 +144,99 @@ def _read_upload(upload: UploadFile) -> bytes:
     return b"".join(chunks)
 
 
-def _validate_crop(crop: str) -> str:
-    for known in CROP_TYPES:
-        if crop.strip().lower() == known.lower():
-            return known
-    raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail=f"Unsupported crop '{crop}'. Supported crops: {', '.join(CROP_TYPES)}.",
-    )
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
 def _validate_content_type(upload: UploadFile) -> None:
-    declared = (upload.content_type or "").split(";")[0].strip().lower()
+    """Reject a declared type we do not accept.
+
+    This is only the cheap first gate: the declared Content-Type is supplied by the
+    client and proves nothing. The real check is decoding the bytes with PIL and looking
+    at the format it actually detected — see ``_validate_decoded_format``.
+    """
+    declared = (upload.content_type or "").lower().split(";")[0].strip()
     if declared and declared not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
-                f"Unsupported image type '{declared}'. "
-                "Send a JPEG, PNG or WebP photo."
+                f"'{declared}' is not an accepted image type. Send a JPEG, PNG or WebP."
             ),
         )
+
+
+def _validate_decoded_format(image) -> None:
+    """Reject bytes that decode to something other than a still image format.
+
+    A file can be named ``leaf.jpg`` and declare ``image/jpeg`` while actually being a
+    GIF, a TIFF or a polyglot. What matters is what the decoder found.
+    """
+    detected = (getattr(image, "format", None) or "").upper()
+    if detected and detected not in ALLOWED_IMAGE_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                f"The file is actually {detected}, which is not accepted. "
+                "Send a JPEG, PNG or WebP."
+            ),
+        )
+
+
+def _crop_of(label: str) -> str:
+    """Local copy of the label convention: 'Crop___Condition'."""
+    return label.split("___")[0] if "___" in label else label
+
+
+def _model_supported_crops() -> List[str]:
+    """Crops the *deployed model* can actually classify, not the ones we list in the UI.
+
+    A crop name appearing in a frontend dropdown is not evidence that the model can
+    diagnose it. Wheat is the live example: it is a supported crop concept with advisory
+    content, but the trained artifact has no wheat classes, so a wheat photo would
+    silently return a tomato or potato diagnosis.
+    """
+    service = get_model_service()
+    if not service.available:
+        return []
+    crops = sorted({_crop_of(label) for label in service.class_names})
+    return crops
+
+
+def _classes_by_crop() -> Dict[str, List[str]]:
+    service = get_model_service()
+    if not service.available:
+        return {}
+    grouped: Dict[str, List[str]] = {}
+    for label in service.class_names:
+        grouped.setdefault(_crop_of(label), []).append(label)
+    return {crop: sorted(labels) for crop, labels in sorted(grouped.items())}
+
+
+def _validate_crop(crop: str) -> str:
+    """Validate against the model's real capability, and say why when it fails."""
+    known = {name.lower(): name for name in CROP_TYPES}
+    if crop.lower() not in known:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Unknown crop '{crop}'. CropGuard recognises: {', '.join(CROP_TYPES)}."
+            ),
+        )
+    canonical = known[crop.lower()]
+
+    supported = _model_supported_crops()
+    if supported and canonical not in supported:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"{canonical} is not supported by the deployed model, which was trained "
+                f"on {', '.join(supported)}. Submitting a {canonical} photo would return "
+                "a diagnosis for a different crop, so the request is refused. Choose one "
+                "of the supported crops, or ask for a model that covers "
+                f"{canonical}."
+            ),
+        )
+    return canonical
 
 
 def _advisory_out(label: str) -> Optional[schemas.AdvisoryOut]:
@@ -174,6 +255,43 @@ def _advisory_out(label: str) -> Optional[schemas.AdvisoryOut]:
         chemical_management=entry.get("chemical_management", {}),
         monitoring=entry.get("monitoring"),
         disclaimer=advisory_module.disclaimer(),
+    )
+
+
+def _set_reference(db: Session, report: Report) -> str:
+    """Human-facing reference, derived from the id once it exists.
+
+    Deliberately public: it identifies a report for a farmer reading it aloud, and grants
+    nothing. Access is by token, never by this number.
+    """
+    reference = f"CG-{report.id:05d}"
+    report.reference = reference
+    db.flush()
+    return reference
+
+
+def _authorise_report(
+    report: Report,
+    report_token: Optional[str],
+    authorization: Optional[str],
+) -> Optional[Tuple[str, str]]:
+    """Allow the report's owner, or any authenticated staff member.
+
+    Returns the staff identity when a staff token was used, else None. A report id alone
+    never authorises anything, and a wrong token is reported identically to a missing one
+    so the response cannot be used to probe which ids exist.
+    """
+    staff = security.staff_identity(authorization)
+    if staff is not None:
+        return staff
+    if security.token_matches(report_token, report.owner_token_hash):
+        return None
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=(
+            "Report not found. Access needs the access token returned when the report was "
+            "created."
+        ),
     )
 
 
@@ -278,6 +396,16 @@ def root_head() -> None:
 
 @app.get("/health", summary="Health and readiness")
 def health() -> dict:
+    """Component-level readiness, with nothing sensitive in it.
+
+    Two rules this follows deliberately:
+
+    * The diagnosis model is **essential**. If it cannot load, the service is not healthy,
+      whatever else works — a health check that says "ok" while every analysis fails is
+      worse than no health check.
+    * No filesystem paths, database hosts, credentials or stack traces. Operational detail
+      belongs in the logs, which are access-controlled; a public health endpoint is not.
+    """
     service = get_model_service()
     model = service.describe()
 
@@ -290,24 +418,102 @@ def health() -> dict:
             session.execute(select(func.count()).select_from(Report))
     except Exception as error:  # noqa: BLE001 - health must never raise
         db_ok = False
-        db_error = f"{type(error).__name__}: {error}"
+        db_error = f"{type(error).__name__}"
 
-    overall = "ok"
-    if not db_ok:
+    storage_status = storage.storage_status()
+    weather_status = weather_risk.weather_status()
+
+    if not db_ok or not model["available"]:
+        overall = "unhealthy"
+    elif not storage_status.get("writable", True):
         overall = "degraded"
-    elif not model["available"]:
-        overall = "degraded"
+    else:
+        overall = "ok"
 
     return {
         "status": overall,
         "version": API_VERSION,
-        "database": {**database_info(), "connected": db_ok, "error": db_error},
-        "model": model,
-        "storage": storage.storage_status(),
-        "weather": weather_risk.weather_status(),
-        "confidence_threshold": settings.confidence_threshold,
+        "checks": {
+            "database": {
+                "ok": db_ok,
+                "dialect": database_info()["dialect"],
+                "error": db_error,
+            },
+            "model": {
+                "ok": bool(model["available"]),
+                "backend": model["backend"],
+                "classes": model["classes"],
+                "artifact_type": model["artifact_type"],
+                "error": model["error"],
+            },
+            "storage": {
+                "backend": storage_status.get("backend"),
+                "writable": storage_status.get("writable"),
+            },
+            "weather": {
+                "providers": weather_status.get("provider_order"),
+                "cached_locations": weather_status.get("cache_entries"),
+                "api_key_configured": weather_status.get("api_key_configured"),
+            },
+            "auth": {
+                "staff_configured": security.staff_auth_configured(),
+            },
+        },
+        "thresholds": {
+            "confidence": settings.confidence_threshold,
+            "ood_floor": settings.ood_confidence_floor,
+        },
         "advisory_entries": len(advisory_module.supported_diseases()),
     }
+
+
+@app.get("/api/model", response_model=schemas.ModelContractOut, summary="Deployed model contract")
+def model_contract() -> schemas.ModelContractOut:
+    """The single verified description of what this deployment can and cannot do.
+
+    The frontend reads this instead of assuming that a crop listed in a dropdown is
+    supported. It is public because none of it is sensitive: it is the model's own
+    metadata, and a farmer has a right to know what the model was trained on.
+    """
+    service = get_model_service()
+    describe = service.describe()
+    if not service.available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"The diagnosis model is not available: {describe['error']}",
+        )
+
+    classes = list(service.class_names)
+    by_crop = _classes_by_crop()
+    return schemas.ModelContractOut(
+        model_version=describe["model_version"],
+        artifact_type=describe["artifact_type"],
+        backend=describe["backend"],
+        classes=classes,
+        output_dimensions=len(classes),
+        image_size=describe["image_size"],
+        channel_order="RGB",
+        normalization={
+            "mean": [0.485, 0.456, 0.406],
+            "std": [0.229, 0.224, 0.225],
+        },
+        supported_crops=sorted(by_crop),
+        classes_by_crop=by_crop,
+        healthy_class_available={
+            crop: any(label.lower().endswith("healthy") for label in labels)
+            for crop, labels in by_crop.items()
+        },
+        confidence_threshold=settings.confidence_threshold,
+        ood_confidence_floor=settings.ood_confidence_floor,
+        provenance={
+            "artifact": "cropguard_mobilenetv3",
+            "trained_on": "PlantVillage colour (tomato, potato) + Rice Leaf Diseases",
+            "note": (
+                "Label order comes from class_names.json and is validated against the "
+                "graph's output width at load time."
+            ),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -322,9 +528,18 @@ def analyze(
     longitude: float = Form(..., ge=-180, le=180),
     region_name: Optional[str] = Form(default=None),
     request_expert_review: bool = Form(default=False),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> schemas.AnalyzeResponse:
     crop = _validate_crop(crop_type)
+
+    allowed, retry_after = security.analyze_limiter().allow(security.client_key(request))
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many analyses from this device. Wait a moment and try again.",
+            headers={"Retry-After": str(retry_after)},
+        )
     if not farmer_name or len(farmer_name.strip()) < 2:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -341,6 +556,7 @@ def analyze(
     except InvalidImage as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
+    _validate_decoded_format(pil_image)
     plausibility = leaf_plausibility(pil_image)
 
     service = get_model_service()
@@ -378,8 +594,12 @@ def analyze(
         confidence_floor=settings.ood_confidence_floor,
     )
 
+    # One-time farmer access token: returned once, stored only as a hash.
+    access_token = security.new_report_token()
+
     report = Report(
         farmer_name=farmer_name.strip(),
+        owner_token_hash=security.hash_token(access_token),
         crop_type=crop,
         image_url=stored.url,
         predicted_disease=prediction.top.label,
@@ -403,6 +623,9 @@ def analyze(
         db.add(report)
         db.commit()
         db.refresh(report)
+        _set_reference(db, report)
+        db.commit()
+        db.refresh(report)
     except Exception as error:
         db.rollback()
         logger.exception("failed to persist report")
@@ -423,10 +646,29 @@ def analyze(
     if not risk.available:
         warnings.append(risk.reason or "Weather risk is unavailable.")
 
+    # Crop-specific advice is withheld when the photo does not match the selected crop:
+    # recommending a tomato treatment for something the model called potato would be
+    # actively harmful, and is exactly what the review queue exists to catch.
+    crop_matches = prediction.top.crop == crop
+    advisory_payload = _advisory_out(prediction.top.label) if crop_matches else None
+    if not crop_matches:
+        warnings.append(
+            f"The photo looks like {prediction.top.crop}, not {crop}. Crop-specific "
+            "advice is withheld until the mismatch is resolved; general guidance for the "
+            f"predicted crop ({prediction.top.condition}) is available after expert review."
+        )
+    if crop == "Rice" and "Rice___healthy" not in (service.class_names or []):
+        warnings.append(
+            "The deployed model has no healthy-rice class, so it cannot confirm that a "
+            "rice leaf is healthy. Any rice result should be treated as a disease "
+            "screening only."
+        )
+
     return schemas.AnalyzeResponse(
         report=schemas.ReportOut.model_validate(report),
+        access_token=access_token,
         plausibility=schemas.PlausibilityOut(**plausibility),
-        advisory=_advisory_out(prediction.top.label),
+        advisory=advisory_payload,
         weather=weather.as_dict() if weather else None,
         risk=risk.as_dict(),
         review_required=report_status is ReportStatus.PENDING_EXPERT_REVIEW,
@@ -485,8 +727,10 @@ def list_reports(
     region_name: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    staff: Tuple[str, str] = Depends(security.require_staff),
     db: Session = Depends(get_db),
 ) -> schemas.ReportListOut:
+    """The review queue. Staff only — it contains every farmer's name and GPS position."""
     conditions = []
     if crop_type:
         conditions.append(Report.crop_type == _validate_crop(crop_type))
@@ -535,8 +779,16 @@ def list_reports(
 
 
 @app.get("/api/reports/{report_id}", response_model=schemas.ReportOut, summary="One report")
-def get_report(report_id: int, db: Session = Depends(get_db)) -> schemas.ReportOut:
-    return schemas.ReportOut.model_validate(_load_report(db, report_id))
+def get_report(
+    report_id: int,
+    x_report_token: Optional[str] = Header(default=None, alias="X-Report-Token"),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> schemas.ReportOut:
+    """One report, for its owner (by access token) or for staff."""
+    report = _load_report(db, report_id)
+    _authorise_report(report, x_report_token, authorization)
+    return schemas.ReportOut.model_validate(report)
 
 
 @app.patch(
@@ -547,8 +799,15 @@ def get_report(report_id: int, db: Session = Depends(get_db)) -> schemas.ReportO
 def verify_report(
     report_id: int,
     payload: schemas.VerifyReportRequest,
+    staff: Tuple[str, str] = Depends(security.require_expert),
     db: Session = Depends(get_db),
 ) -> schemas.ReportOut:
+    """Expert confirmation or correction. Requires a validated expert token.
+
+    The expert name in the body is recorded as a note, never as authorisation: the
+    identity comes from the bearer token.
+    """
+    actor_role, actor_name = staff
     report = _load_report(db, report_id)
 
     if report.status in (ReportStatus.EXPERT_CONFIRMED, ReportStatus.EXPERT_CORRECTED):
@@ -560,6 +819,9 @@ def verify_report(
                 "review is not allowed."
             ),
         )
+
+    # Captured before anything changes: the audit row must say what the state *was*.
+    previous_state = f"{report.status.value}:{report.effective_diagnosis}"[:120]
 
     if payload.action == "confirm":
         report.final_diagnosis = report.predicted_disease
@@ -578,10 +840,22 @@ def verify_report(
         report.status = ReportStatus.EXPERT_CORRECTED
 
     report.expert_notes = payload.expert_notes
+    # Recorded as a note; authorisation came from the bearer token, not this field.
     report.expert_name = payload.expert_name
     report.verified_at = datetime.now(timezone.utc)
 
     try:
+        db.add(
+            AuditEvent(
+                report_id=report.id,
+                action="verify",
+                actor_role=actor_role,
+                actor_name=actor_name,
+                previous_state=previous_state,
+                new_state=f"{report.status.value}:{report.effective_diagnosis}"[:120],
+                notes=payload.expert_notes,
+            )
+        )
         db.commit()
         db.refresh(report)
     except Exception as error:
@@ -609,9 +883,13 @@ def add_followup(
     condition_status: FollowUpCondition = Form(...),
     farmer_notes: Optional[str] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
+    x_report_token: Optional[str] = Header(default=None, alias="X-Report-Token"),
+    authorization: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ) -> schemas.FollowUpOut:
+    """A follow-up observation: the report's owner, or staff."""
     report = _load_report(db, report_id)
+    _authorise_report(report, x_report_token, authorization)
 
     image_url: Optional[str] = None
     warning: Optional[str] = None
@@ -664,7 +942,11 @@ def add_followup(
 # Statistics
 # ---------------------------------------------------------------------------
 @app.get("/api/stats", response_model=schemas.StatsResponse, summary="Aggregate statistics")
-def get_stats(db: Session = Depends(get_db)) -> schemas.StatsResponse:
+def get_stats(
+    staff: Tuple[str, str] = Depends(security.require_staff),
+    db: Session = Depends(get_db),
+) -> schemas.StatsResponse:
+    """Operational aggregates. Staff only."""
     def _key(value) -> str:
         """Enum members come back from the database, so key by their stored value."""
         return value.value if hasattr(value, "value") else str(value)

@@ -131,6 +131,12 @@ class Report(Base):
         index=True,
     )
     final_diagnosis: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # Anonymous-by-design ownership: only the hash of a one-time token is stored, and
+    # that token — not the sequential id — is what authorises access to this report.
+    owner_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # Human-facing reference shown to the farmer. Public and sequential on purpose; it
+    # identifies a report but grants nothing.
+    reference: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, unique=True, index=True)
     expert_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     expert_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -139,6 +145,11 @@ class Report(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
+    audit_events: Mapped[List["AuditEvent"]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="AuditEvent.created_at",
+    )
     follow_ups: Mapped[List["FollowUp"]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan",
@@ -192,3 +203,30 @@ class FollowUp(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<FollowUp id={self.id} report_id={self.report_id} condition={self.condition_status.value}>"
+
+
+class AuditEvent(Base):
+    """Append-only record of privileged actions.
+
+    Verification changes who said what about a farmer's crop, so the history has to be
+    reconstructable: who acted, on which report, what the state was before and after, and
+    what they wrote. Rows are never updated or deleted by the application.
+    """
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(48), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(24), nullable=False)
+    actor_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    previous_state: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    new_state: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    report: Mapped["Report"] = relationship(back_populates="audit_events")

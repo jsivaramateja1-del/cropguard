@@ -26,6 +26,7 @@ import { Alert } from '../components/ui/alert.jsx'
 import { Badge } from '../components/ui/badge.jsx'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
@@ -87,15 +88,15 @@ function HealthBanner() {
   )
 }
 
-function ReportNumberDialog({ reportId }) {
-  const [copied, setCopied] = useState(false)
+function ReportNumberDialog({ reportId, reference, accessToken }) {
+  const [copied, setCopied] = useState(null)
 
-  async function copy() {
+  async function copy(value, which) {
     try {
-      await navigator.clipboard.writeText(String(reportId))
-      setCopied(true)
+      await navigator.clipboard.writeText(value)
+      setCopied(which)
     } catch {
-      setCopied(false)
+      setCopied(null)
     }
   }
 
@@ -108,26 +109,45 @@ function ReportNumberDialog({ reportId }) {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Your report number</DialogTitle>
+        <DialogTitle>Save your access code</DialogTitle>
         <DialogDescription>
-          Write this down. You will need it to look the report up later and to add follow-up
-          observations on how the crop is recovering.
+          This code is shown once and is the only way to reopen your report or add follow-up
+          observations. Keep it private — anyone with it can read this report.
         </DialogDescription>
 
-        <div className="my-4 flex items-center justify-center rounded-lg border border-border bg-muted py-4">
-          <span className="tabular text-3xl font-bold tracking-tight text-foreground">
-            #{reportId}
+        <div className="my-3 flex items-center justify-center rounded-lg border border-border bg-muted py-3">
+          <span className="tabular text-2xl font-bold tracking-tight text-foreground">
+            {reference || `#${reportId}`}
           </span>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={copy}>
-            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-            {copied ? 'Copied' : 'Copy number'}
+        {accessToken ? (
+          <div className="mb-3">
+            <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Access code
+            </p>
+            <code className="block break-all rounded-md border border-border bg-muted px-2.5 py-2 text-2xs text-foreground">
+              {accessToken}
+            </code>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => copy(accessToken || '', 'token')}
+            disabled={!accessToken}
+          >
+            {copied === 'token' ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copied === 'token' ? 'Access code copied' : 'Copy access code'}
           </Button>
-          <Button asChild className="flex-1">
-            <a href={`#report-${reportId}`}>Done</a>
+          <Button onClick={() => copy(reference || String(reportId), 'ref')} variant="secondary">
+            {copied === 'ref' ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copied === 'ref' ? 'Reference copied' : 'Copy reference number'}
           </Button>
+          <DialogClose asChild>
+            <Button>Done</Button>
+          </DialogClose>
         </div>
       </DialogContent>
     </Dialog>
@@ -509,7 +529,11 @@ export default function DiagnosePage() {
               <RotateCcw size={16} aria-hidden="true" />
               Check another leaf
             </Button>
-            <ReportNumberDialog reportId={report.id} />
+            <ReportNumberDialog
+              reportId={report.id}
+              reference={report.reference}
+              accessToken={result.access_token}
+            />
           </div>
         </div>
       )}

@@ -26,6 +26,14 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 _TMP = Path(tempfile.mkdtemp(prefix="cropguard-tests-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'test.db'}"
+
+# Staff credentials for the tests. An unconfigured deployment has no privileged access.
+os.environ.setdefault("EXPERT_TOKEN", "test-expert-token")
+os.environ.setdefault("EXPERT_NAME", "Dr Test Expert")
+os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
+os.environ.setdefault("ADMIN_NAME", "Test Administrator")
+# The suite submits many photos; rate limiting is tested explicitly instead.
+os.environ.setdefault("ANALYZE_RATE_LIMIT", "10000")
 os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:5173")
 os.environ.setdefault("CONFIDENCE_THRESHOLD", "0.75")
 
@@ -92,3 +100,15 @@ def _prepare_model_artifacts() -> None:
 
 
 _prepare_model_artifacts()
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _create_schema():
+    """Create every table once per test session, for all test modules."""
+    import database  # noqa: PLC0415 - imported after the environment is configured
+
+    database.init_db()
+    yield

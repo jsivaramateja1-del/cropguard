@@ -135,6 +135,46 @@ class ReportCreate(BaseModel):
         return cleaned or None
 
 
+class AuditEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    actor_role: str
+    actor_name: str
+    previous_state: Optional[str] = None
+    new_state: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _serialise_created_at(self, value: datetime) -> str:
+        return as_utc(value).isoformat()
+
+
+class ModelContractOut(BaseModel):
+    """The single verified description of the deployed model.
+
+    Exists so the frontend, the tests and a reviewer can all check the same facts instead
+    of inferring capability from a crop name appearing in a list.
+    """
+
+    model_version: str
+    artifact_type: str
+    backend: Optional[str] = None
+    classes: List[str]
+    output_dimensions: int
+    image_size: int
+    channel_order: str
+    normalization: Dict[str, List[float]]
+    supported_crops: List[str]
+    classes_by_crop: Dict[str, List[str]]
+    healthy_class_available: Dict[str, bool]
+    confidence_threshold: float
+    ood_confidence_floor: float
+    provenance: Dict[str, object]
+
+
 class ReportSummary(BaseModel):
     """Compact shape for lists and the outbreak map."""
 
@@ -171,10 +211,12 @@ class ReportOut(ReportSummary):
     weather_temp: Optional[float] = None
     weather_humidity: Optional[float] = None
     weather_rain: Optional[float] = None
+    reference: Optional[str] = None
     expert_notes: Optional[str] = None
     expert_name: Optional[str] = None
     verified_at: Optional[datetime] = None
     follow_ups: List[FollowUpOut] = Field(default_factory=list)
+    audit_events: List[AuditEventOut] = Field(default_factory=list)
 
     @field_serializer("verified_at")
     def _serialise_verified_at(self, value: Optional[datetime]) -> Optional[str]:
@@ -282,6 +324,9 @@ class AnalyzeResponse(BaseModel):
     """Everything a farmer needs after one photo, in one payload."""
 
     report: ReportOut
+    # Returned exactly once, at creation. Only its hash is stored, so this is the farmer's
+    # only way back into the report — the sequential id is not sufficient.
+    access_token: Optional[str] = None
     plausibility: Optional[PlausibilityOut] = None
     advisory: Optional[AdvisoryOut] = None
     weather: Optional[Dict[str, object]] = None
