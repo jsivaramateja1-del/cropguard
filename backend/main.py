@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, update
@@ -49,6 +49,7 @@ from inference import (
 from models import (
     AuditEvent,
     ExpertApplication,
+    ReportImage,
     User,
     CROP_TYPES,
     FollowUp,
@@ -1569,6 +1570,31 @@ def add_followup(
 # ---------------------------------------------------------------------------
 # Statistics
 # ---------------------------------------------------------------------------
+@app.get("/api/images/{token}", summary="Fetch a stored leaf image")
+def get_image(token: str, db: Session = Depends(get_db)) -> Response:
+    """Serve image bytes stored in the database.
+
+    The token is unguessable (24 random bytes), which is the same protection the previous
+    `/uploads/<uuid>` path had: the URL is not secret by policy, but it cannot be guessed
+    or enumerated.
+    """
+    image = db.execute(
+        select(ReportImage).where(ReportImage.token == token)
+    ).scalar_one_or_none()
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
+
+    return Response(
+        content=image.data,
+        media_type=image.content_type,
+        headers={
+            # Immutable: a token never refers to different bytes.
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{image.sha256 or image.token}"',
+        },
+    )
+
+
 @app.get("/api/outbreaks", response_model=schemas.OutbreakResponse, summary="Public outbreak map")
 def get_outbreaks(
     crop_type: Optional[str] = Query(default=None),

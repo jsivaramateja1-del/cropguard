@@ -27,6 +27,7 @@ import inference
 import main
 import models
 import storage
+from config import settings
 import weather_risk
 from inference import InvalidImage, ModelService, ModelUnavailable, open_image, preprocess_image
 from weather_risk import WeatherSnapshot, compute_risk
@@ -342,11 +343,23 @@ def test_status_decision_rules(
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
-def test_local_storage_fallback_writes_a_file(leaf_jpeg):
+def test_local_storage_fallback_writes_a_file(leaf_jpeg, monkeypatch, tmp_path):
+    """With database storage disabled, the disk fallback still works and says so."""
+    monkeypatch.setattr(settings, "force_local_storage", True, raising=False)
     stored = storage.store_image(leaf_jpeg, "leaf.jpg", "image/jpeg")
     assert stored.backend == "local"
     assert stored.url.startswith("/uploads/")
-    assert stored.warning and "Cloudinary" in stored.warning
+    assert stored.warning, "the fallback must warn that the file is not durable"
+    written = settings.uploads_dir / stored.url.rsplit("/", 1)[-1]
+    assert written.is_file() and written.stat().st_size == len(leaf_jpeg)
+
+
+def test_database_storage_is_the_default(leaf_jpeg):
+    """A configured database is preferred over local disk, so images survive a redeploy."""
+    stored = storage.store_image(leaf_jpeg, "leaf.jpg", "image/jpeg")
+    assert stored.backend == "postgres"
+    assert stored.url.startswith("/api/images/")
+    assert stored.warning is None
 
 
 def test_extension_resolution():
@@ -377,7 +390,7 @@ def test_health_reports_every_component(client):
     assert payload["checks"]["database"]["ok"] is True
     assert payload["checks"]["model"]["ok"] is True
     assert payload["checks"]["model"]["backend"] == "onnx"
-    assert payload["checks"]["storage"]["backend"] in {"local", "cloudinary"}
+    assert payload["checks"]["storage"]["backend"] in {"local", "cloudinary", "postgres"}
     assert payload["advisory_entries"] == 21
 
 
@@ -398,7 +411,7 @@ def test_analyze_happy_path(client, leaf_jpeg):
     assert payload["disclaimer"]
     # The image was stored and the URL is reachable through the static mount.
     image_url = payload["report"]["image_url"]
-    assert image_url.startswith("/uploads/")
+    assert image_url.startswith("/api/images/")
     assert client.get(image_url).status_code == 200
 
 
@@ -572,7 +585,7 @@ def test_follow_up_with_image(client, leaf_jpeg):
         files={"image": ("followup.jpg", leaf_jpeg, "image/jpeg")},
     )
     assert response.status_code == 201
-    assert response.json()["followup_image_url"].startswith("/uploads/")
+    assert response.json()["followup_image_url"].startswith("/api/images/")
 
 
 def test_follow_up_rejects_invalid_condition(client, leaf_jpeg):

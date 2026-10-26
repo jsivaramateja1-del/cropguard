@@ -277,7 +277,10 @@ def test_model_contract_reports_real_capability(client):
 # ---------------------------------------------------------------------------
 def test_health_exposes_no_paths_or_credentials(client):
     body = client.get("/health").text
-    for forbidden in ("/opt/", "/scratch", "/usr/", "uploads_dir", "sqlite:", "postgres"):
+    for forbidden in (
+        "/opt/", "/scratch", "/usr/", "uploads_dir",
+        "sqlite:", "postgresql://", "postgres://", "@db.", "password",
+    ):
         assert forbidden not in body, f"health response leaks {forbidden}"
     assert "token" not in body.lower() or "staff_configured" in body
 
@@ -613,3 +616,40 @@ def test_reference_lookup_unknown_reference(client):
     response = client.get("/api/reports/by-reference/CG-99999", headers=EXPERT)
     assert response.status_code == 404
     assert "No report with that reference" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Durable image storage
+# ---------------------------------------------------------------------------
+def test_uploaded_image_is_served_from_the_database(client, leaf):
+    """Images live in the database, so they survive a redeploy."""
+    created = _create(client, leaf)
+    url = created["report"]["image_url"]
+    assert url.startswith("/api/images/")
+
+    fetched = client.get(url)
+    assert fetched.status_code == 200
+    assert fetched.headers["content-type"].startswith("image/")
+    assert len(fetched.content) == len(leaf)
+    assert fetched.headers["etag"]
+    assert "immutable" in fetched.headers["cache-control"]
+
+    # The bytes really are in the database, not on disk.
+    token = url.rsplit("/", 1)[-1]
+    with database.SessionLocal() as session:
+        row = session.execute(
+            select(models.ReportImage).where(models.ReportImage.token == token)
+        ).scalar_one()
+        assert row.data == leaf
+        assert row.size_bytes == len(leaf)
+
+
+def test_unknown_image_token_is_a_404(client):
+    assert client.get("/api/images/not-a-real-token").status_code == 404
+
+
+def test_image_tokens_are_unguessable(client, leaf):
+    """Two uploads of identical bytes get different tokens."""
+    first = _create(client, leaf)["report"]["image_url"]
+    second = _create(client, leaf)["report"]["image_url"]
+    assert first != second

@@ -23,6 +23,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    LargeBinary,
     Enum as SAEnum,
     Float,
     ForeignKey,
@@ -238,6 +239,32 @@ class User(Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     reports: Mapped[List["Report"]] = relationship(back_populates="owner_user")
+
+
+class ReportImage(Base):
+    """Image bytes kept in the database.
+
+    Why the database rather than object storage: it needs no additional credentials, so a
+    deployment that already has DATABASE_URL gets durable images for free — and Render's
+    disk is ephemeral, so local files disappear on every redeploy. The trade-off is that
+    bytes live in Postgres, which is fine for a prototype and not for a production volume.
+
+    Each row carries an unguessable token; the URL is ``/api/images/<token>``. That keeps
+    the current behaviour (a public but unguessable image URL) rather than requiring an
+    authenticated fetch for every thumbnail.
+    """
+
+    __tablename__ = "report_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False, default="image/jpeg")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class ExpertApplication(Base):

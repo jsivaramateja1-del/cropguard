@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # --- account authentication ------------------------------------------------
     # Signing key for access tokens. If unset, a random key is generated per process,
     # which invalidates tokens on restart — safe, but inconvenient, so set it.
+    # Testing escape hatch: keep images on disk even when the database could hold them.
+    force_local_storage: bool = False
+
     secret_key: str = ""
     access_token_ttl_seconds: int = 86400
     login_max_failures: int = 8
