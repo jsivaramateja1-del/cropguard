@@ -197,6 +197,7 @@ def _decide_status(
     farmer_requested_review: bool,
     plausible_leaf: bool = True,
     vegetation_fraction: float = 1.0,
+    confidence_floor: float = 0.88,
 ) -> tuple[ReportStatus, List[str]]:
     """Which reports need a human, and why.
 
@@ -229,6 +230,11 @@ def _decide_status(
         reasons.append(
             "No class reached a plausible confidence. The photo may be outside the 16 "
             "diseases this model knows."
+        )
+    elif confidence < confidence_floor:
+        reasons.append(
+            f"Confidence {confidence:.2f} is below the {confidence_floor:.2f} that genuine "
+            "leaf photos normally reach on this model, so the photo may not be a crop leaf."
         )
 
     if reasons:
@@ -369,6 +375,7 @@ def analyze(
         farmer_requested_review=request_expert_review,
         plausible_leaf=bool(plausibility["is_plausible_leaf"]),
         vegetation_fraction=float(plausibility["vegetation_fraction"]),
+        confidence_floor=settings.ood_confidence_floor,
     )
 
     report = Report(

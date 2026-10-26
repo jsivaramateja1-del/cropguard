@@ -1116,3 +1116,49 @@ def test_low_confidence_adds_an_out_of_scope_reason():
     )
     assert status.value == "Pending_Expert_Review"
     assert any("outside the 16 diseases" in reason for reason in reasons)
+
+
+def test_confidence_below_the_leaf_floor_is_flagged():
+    """A bird photo scored 0.81 while genuine leaves score a median of 0.907."""
+    status, reasons = main._decide_status(
+        confidence=0.81,
+        predicted_crop="Tomato",
+        selected_crop="Tomato",
+        artifact_type="trained",
+        farmer_requested_review=False,
+        plausible_leaf=True,          # the colour check passes: green foliage in frame
+        vegetation_fraction=0.4,
+        confidence_floor=0.88,
+    )
+    assert status.value == "Pending_Expert_Review"
+    assert any("may not be a crop leaf" in reason for reason in reasons)
+
+
+def test_confident_in_distribution_leaf_is_still_auto_verified():
+    status, reasons = main._decide_status(
+        confidence=0.93,
+        predicted_crop="Tomato",
+        selected_crop="Tomato",
+        artifact_type="trained",
+        farmer_requested_review=False,
+        plausible_leaf=True,
+        vegetation_fraction=0.7,
+        confidence_floor=0.88,
+    )
+    assert status.value == "AI_Verified"
+    assert reasons == []
+
+
+def test_floor_is_configurable(monkeypatch):
+    monkeypatch.setattr(main.settings, "ood_confidence_floor", 0.5, raising=False)
+    status, reasons = main._decide_status(
+        confidence=0.81,
+        predicted_crop="Tomato",
+        selected_crop="Tomato",
+        artifact_type="trained",
+        farmer_requested_review=False,
+        plausible_leaf=True,
+        vegetation_fraction=0.4,
+        confidence_floor=main.settings.ood_confidence_floor,
+    )
+    assert status.value == "AI_Verified"

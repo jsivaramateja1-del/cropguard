@@ -46,7 +46,10 @@ def _build_tiny_onnx(path: Path, num_classes: int) -> None:
     weights = np.zeros((3, num_classes), dtype=np.float32)
     weights[0, 0] = 1.0  # a little sensitivity to the red channel
     bias = np.zeros((num_classes,), dtype=np.float32)
-    bias[0] = 3.0  # class 0 wins comfortably, giving high confidence
+    # 6.0 puts the winning class around 0.98, above the 0.88 in-distribution floor, so the
+    # fixture represents a confident leaf rather than a borderline photo. The floor itself
+    # is tested directly in test_phase3.
+    bias[0] = 6.0
 
     graph = helper.make_graph(
         nodes=[

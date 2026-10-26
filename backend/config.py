@@ -70,6 +70,11 @@ class Settings(BaseSettings):
 
     # Decision thresholds (see docs/calibration.md before changing)
     confidence_threshold: float = 0.75
+    # Below this, a prediction is outside the range that genuine leaf photos produce.
+    # Measured on the validation set: median 0.907, 5th percentile 0.880. A photo of
+    # something that is not a crop leaf typically scores lower, so this catches cases a
+    # colour check cannot — a bird on a branch, for example, which scored 0.81.
+    ood_confidence_floor: float = 0.88
 
     # Uploads
     max_upload_mb: int = 8
