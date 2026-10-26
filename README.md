@@ -40,6 +40,9 @@ down is equally honest.
 | Follow-up | Reference + access code, condition status, optional photo, full timeline |
 | Outbreak map | Public `/api/outbreaks` with coordinates rounded to ~1 km; Leaflet, lazy-loaded |
 | Stored photos | Leaf images kept in Postgres, served from `/api/images/{token}`, shown on the result, expert queue and follow-up timeline |
+| Retention | Images purged after 90 days or when the store exceeds 300 MB; reports and audit history are never deleted |
+| Disease reference | `/diseases` — every condition in the advisory base, marked screenable or advisory-only |
+| Dark mode | Light / dark / follow-system, applied before first paint, no flash |
 | Security | Anonymous farmers with scoped tokens, bearer-token staff auth, ownership checks, rate limiting, content-based upload validation |
 
 ## Measured, not claimed
@@ -143,6 +146,19 @@ cd frontend && npx playwright install chromium && npm run build && npm run test:
 E2E_BASE_URL=https://cropguard-blush.vercel.app npm run test:e2e:live
 ```
 
+### Image retention
+
+Photos live in Postgres, which has a finite quota (500 MB on the free Supabase tier).
+`maintenance.py` enforces a policy:
+
+- images older than `IMAGE_RETENTION_DAYS` (default 90) are deleted
+- if the total exceeds `IMAGE_MAX_TOTAL_MB` (default 300), the oldest go until it fits
+- **the report, its follow-ups and the audit trail are never deleted** — only the bytes,
+  with `image_url` cleared so the UI shows its placeholder
+- the sweep runs opportunistically at most once an hour, and on demand from
+  `POST /api/admin/maintenance/retention`
+- `/health` reports current usage, so the quota is never a surprise
+
 ## Quality gates
 
 Every push runs seven jobs. Two of them exist because they found real defects:
@@ -188,6 +204,8 @@ pip-audit -r backend/requirements-deploy.txt --no-deps --disable-pip
 | `POST` | `/api/analyze` | public, rate limited — returns a one-time access code |
 | `GET` | `/api/weather` | public |
 | `GET` | `/api/outbreaks` | public — anonymised, coordinates rounded to ~1 km |
+| `GET` | `/api/diseases` | public — the advisory knowledge base, with model coverage |
+| `POST` | `/api/admin/maintenance/retention` | admin — run the image sweep now |
 | `GET` | `/api/reports` | staff — review queue |
 | `GET` | `/api/reports/{id}` | owner token or staff |
 | `GET` | `/api/reports/by-reference/{ref}` | owner token or staff |

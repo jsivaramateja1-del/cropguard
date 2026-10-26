@@ -145,6 +145,8 @@ def _apply_additive_migrations() -> None:
             # without rebuilding the table, so the statement is skipped there — local
             # databases are recreated from the models, where the column is already nullable.
             "ALTER TABLE audit_events ALTER COLUMN report_id DROP NOT NULL",
+            # Retention clears image_url when it deletes the bytes.
+            "ALTER TABLE reports ALTER COLUMN image_url DROP NOT NULL",
         ):
             try:
                 connection.execute(text(statement))

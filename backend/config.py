@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- image retention -------------------------------------------------------
+    # Uploaded photos are kept in the database, which has a finite quota (500 MB on the
+    # free Supabase tier). Reports are kept indefinitely because they feed the outbreak
+    # map and expert history; the image bytes are not needed that long.
+    image_retention_days: int = 90
+    # Also purge when the stored bytes exceed this, oldest first.
+    image_max_total_mb: int = 300
+    # How often the opportunistic sweep may run, in seconds.
+    image_cleanup_interval: int = 3600
+
     # --- email (Brevo) ---------------------------------------------------------
     # Transactional email for password resets. Unset means nothing is sent, and the API
     # says so rather than pretending an email went out.

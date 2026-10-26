@@ -9,6 +9,21 @@
       content="CropGuard screens a leaf photograph for crop disease and returns practical guidance. An early-screening aid, not a replacement for an agricultural expert."
     />
     <title>CropGuard — crop disease screening</title>
+    <script>
+      // Apply the saved theme before first paint, so a dark-mode user never sees a white
+      // flash. Same key the ThemeToggle writes.
+      (function () {
+        try {
+          var stored = localStorage.getItem('cropguard.theme') || 'system'
+          var dark =
+            stored === 'dark' ||
+            (stored === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

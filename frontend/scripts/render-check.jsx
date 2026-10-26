@@ -36,6 +36,9 @@ const CHECKS = [
   ['follow-up nav', 'Follow up'],
   ['expert nav', 'Expert'],
   ['account nav', 'Account'],
+  ['diseases nav', 'Diseases'],
+  ['theme toggle group', 'Colour theme'],
+  ['theme toggle offers three options', 'System theme'],
 ]
 
 let failures = 0

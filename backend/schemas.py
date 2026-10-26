@@ -260,6 +260,33 @@ class ExpertApplicationListOut(BaseModel):
     applications: List[ExpertApplicationOut]
 
 
+class DiseaseCardOut(BaseModel):
+    """One entry of the advisory knowledge base, shaped for a card in the UI.
+
+    Public: this is reference material about the diseases the model was trained on, not
+    anything about a farmer's report.
+    """
+
+    label: str
+    crop: str
+    condition: str
+    pathogen_type: Optional[str] = None
+    severity: Optional[str] = None
+    is_healthy: bool = False
+    summary: str = ""
+    symptoms: List[str] = Field(default_factory=list)
+    favorable_conditions: List[str] = Field(default_factory=list)
+    monitoring: Optional[str] = None
+    supported_by_model: bool = False
+
+
+class DiseaseListOut(BaseModel):
+    diseases: List[DiseaseCardOut]
+    total: int
+    crops: List[str]
+    model_classes: int
+
+
 class OutbreakPointOut(BaseModel):
     """One anonymised, aggregated map point.
 

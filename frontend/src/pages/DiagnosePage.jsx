@@ -9,12 +9,15 @@ import {
   ScanLine,
   Stethoscope,
 } from 'lucide-react'
-import { analyzeLeaf, diagnoseConnectionFailure, fetchHealth } from '../api.js'
+import { analyzeLeaf, diagnoseConnectionFailure, fetchDiseases, fetchHealth } from '../api.js'
+import { Link, useNavigate } from 'react-router-dom'
 import CropPicker from '../components/CropPicker.jsx'
 import ImagePicker from '../components/ImagePicker.jsx'
 import LocationField from '../components/LocationField.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import PhotoThumbnail from '../components/PhotoThumbnail.jsx'
+import TickerStrip from '../components/TickerStrip.jsx'
+import DiseaseCard from '../components/DiseaseCard.jsx'
 import ConfidenceMeter from '../components/ConfidenceMeter.jsx'
 import AdvisoryPanel from '../components/AdvisoryPanel.jsx'
 import WeatherRiskCard from '../components/WeatherRiskCard.jsx'
@@ -169,6 +172,43 @@ export default function DiagnosePage() {
   const [location, setLocation] = useState(null)
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [diseases, setDiseases] = useState(null)
+
+  const navigate = useNavigate()
+
+  // Facts for the ticker come from the advisory database, so nothing in the strip can
+  // claim something the app does not say elsewhere.
+  const tickerItems = useMemo(() => {
+    if (!diseases?.diseases) return []
+    const spread = diseases.diseases.filter((disease) => disease.favorable_conditions?.length)
+    return spread.slice(0, 8).map(
+      (disease) =>
+        `${disease.condition} on ${disease.crop.toLowerCase()} — ${disease.favorable_conditions[0]}`,
+    )
+  }, [diseases])
+
+  // A taste of the grid on the home page: screenable conditions only, because those are
+  // the ones a photo here can actually diagnose.
+  const previewDiseases = useMemo(() => {
+    if (!diseases?.diseases) return []
+    return diseases.diseases.filter((disease) => disease.supported_by_model).slice(0, 6)
+  }, [diseases])
+
+  // Loaded once: the ticker and the preview grid both read from it.
+  useEffect(() => {
+    let cancelled = false
+    fetchDiseases()
+      .then((payload) => {
+        if (!cancelled) setDiseases(payload)
+      })
+      .catch(() => {
+        // Supplementary content: a failure here must not disturb diagnosis.
+        if (!cancelled) setDiseases(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [askExpert, setAskExpert] = useState(false)
 
   const [phase, setPhase] = useState('idle') // idle | uploading | analysing
@@ -281,6 +321,39 @@ export default function DiagnosePage() {
   return (
     <div className="space-y-4">
       <HealthBanner />
+
+      {tickerItems.length ? <TickerStrip items={tickerItems} /> : null}
+
+      {previewDiseases.length ? (
+        <section className="space-y-2" aria-labelledby="recognised-heading">
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <h2 id="recognised-heading" className="text-sm font-bold">
+                What CropGuard can recognise
+              </h2>
+              <p className="text-2xs text-muted-foreground">
+                Six of the conditions the photo model was trained on
+              </p>
+            </div>
+            <Link
+              to="/diseases"
+              className="shrink-0 whitespace-nowrap text-2xs font-semibold text-primary underline underline-offset-2"
+            >
+              See all {diseases?.total ?? ''}
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {previewDiseases.map((disease, index) => (
+              <DiseaseCard
+                key={disease.label}
+                disease={disease}
+                index={index}
+                onSelect={() => navigate('/diseases')}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {!result ? (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -417,7 +490,7 @@ export default function DiagnosePage() {
             </Alert>
           ) : null}
 
-          <Card className="animate-fade-in">
+      <Card className="animate-fade-in">
             <CardContent className="space-y-3.5 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

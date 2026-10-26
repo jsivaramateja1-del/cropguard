@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import ThemeToggle from './components/ThemeToggle.jsx'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import { Leaf, ShieldAlert } from 'lucide-react'
 import DiagnosePage from './pages/DiagnosePage.jsx'
@@ -17,6 +18,7 @@ const ExpertPage = lazy(() => import('./pages/ExpertPage.jsx'))
 const FollowUpPage = lazy(() => import('./pages/FollowUpPage.jsx'))
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage.jsx'))
+const DiseasesPage = lazy(() => import('./pages/DiseasesPage.jsx'))
 import { Button } from './components/ui/button.jsx'
 
 /**
@@ -30,12 +32,12 @@ function Layout({ children }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2.5">
-          <Link to="/" className="flex items-center gap-2.5 rounded-md">
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
+          <Link to="/" className="flex shrink-0 items-center gap-2.5 rounded-md">
             <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-sm">
               <Leaf size={19} strokeWidth={2.25} aria-hidden="true" />
             </span>
-            <span className="leading-none">
+            <span className="hidden leading-none sm:block">
               <span className="block text-[15px] font-bold tracking-tight text-foreground">
                 CropGuard
               </span>
@@ -45,7 +47,12 @@ function Layout({ children }) {
             </span>
           </Link>
 
-          <nav aria-label="Main" className="flex items-center gap-1">
+          {/* Six destinations will not fit a phone: scroll them rather than wrapping the
+              header into three rows or hiding them behind a menu button. */}
+          <nav
+            aria-label="Main"
+            className="-mx-1 flex flex-1 items-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_88%,transparent)] [&::-webkit-scrollbar]:hidden"
+          >
             <NavLink to="/" end>
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
@@ -74,6 +81,13 @@ function Layout({ children }) {
                 </Button>
               )}
             </NavLink>
+            <NavLink to="/diseases">
+              {({ isActive }) => (
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                  Diseases
+                </Button>
+              )}
+            </NavLink>
             <NavLink to="/account">
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
@@ -82,6 +96,10 @@ function Layout({ children }) {
               )}
             </NavLink>
           </nav>
+
+          <div className="shrink-0">
+            <ThemeToggle compact />
+          </div>
         </div>
       </header>
 
@@ -122,6 +140,14 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<DiagnosePage />} />
+        <Route
+          path="/diseases"
+          element={
+            <Suspense fallback={<RouteLoading />}>
+              <DiseasesPage />
+            </Suspense>
+          }
+        />
         <Route
           path="/reset-password"
           element={

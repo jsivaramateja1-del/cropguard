@@ -36,6 +36,7 @@ import auth
 import database
 import email_templates
 import emailer
+import maintenance
 import schemas
 import security
 import storage
@@ -602,6 +603,7 @@ def health() -> dict:
                 "legacy_staff_token_enabled": settings.allow_legacy_staff_token,
             },
             "email": emailer.email_status(),
+            "images": _image_usage(),
         },
         "thresholds": {
             "confidence": settings.confidence_threshold,
@@ -609,6 +611,40 @@ def health() -> dict:
         },
         "advisory_entries": len(advisory_module.supported_diseases()),
     }
+
+
+def _image_usage() -> dict:
+    """Stored image volume, without failing health if the query errors."""
+    try:
+        from database import SessionLocal  # noqa: PLC0415
+
+        with SessionLocal() as session:
+            return maintenance.storage_usage(session)
+    except Exception:  # noqa: BLE001 - health must never raise
+        return {"images": None, "bytes": None, "error": "unavailable"}
+
+
+@app.post(
+    "/api/admin/maintenance/retention",
+    summary="Run the image retention sweep now (admin only)",
+)
+def run_retention(
+    staff: Tuple[str, str] = Depends(require_staff_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Delete images past the retention window, then enforce the size cap.
+
+    Reports are never deleted — only the stored bytes, with `image_url` cleared so the UI
+    falls back to its placeholder.
+    """
+    if staff[0] != auth.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an administrator can run maintenance.",
+        )
+    result = maintenance.purge_expired_images(db)
+    logger.info("retention run by %s: %s", staff[1], result.as_dict())
+    return result.as_dict()
 
 
 @app.get("/api/model", response_model=schemas.ModelContractOut, summary="Deployed model contract")
@@ -1426,6 +1462,9 @@ def analyze(
             "screening only."
         )
 
+    # Housekeeping, at most once per interval. Never fails the request.
+    maintenance.maybe_run_retention(db)
+
     return schemas.AnalyzeResponse(
         report=schemas.ReportOut.model_validate(report),
         access_token=access_token,
@@ -1760,6 +1799,45 @@ def get_image(token: str, db: Session = Depends(get_db)) -> Response:
             "Cache-Control": "public, max-age=31536000, immutable",
             "ETag": f'"{image.sha256 or image.token}"',
         },
+    )
+
+
+@app.get("/api/diseases", response_model=schemas.DiseaseListOut, summary="Diseases CropGuard knows")
+def list_diseases() -> schemas.DiseaseListOut:
+    """The advisory knowledge base as cards.
+
+    `supported_by_model` matters: the knowledge base covers 21 conditions, the deployed
+    model recognises 16. Showing which is which is more honest than implying every card
+    can be diagnosed from a photo.
+    """
+    service = get_model_service()
+    trained = set(service.class_names) if service.available else set()
+
+    cards = []
+    for label in advisory_module.supported_diseases():
+        entry = advisory_module.get_advisory(label) or {}
+        cards.append(
+            schemas.DiseaseCardOut(
+                label=label,
+                crop=entry.get("crop") or _crop_of(label),
+                condition=entry.get("condition") or label.split("___")[-1].replace("_", " "),
+                pathogen_type=entry.get("pathogen_type"),
+                severity=entry.get("severity"),
+                is_healthy=bool(entry.get("is_healthy")),
+                summary=entry.get("summary") or "",
+                symptoms=list(entry.get("symptoms") or [])[:4],
+                favorable_conditions=list(entry.get("favorable_conditions") or [])[:3],
+                monitoring=entry.get("monitoring"),
+                supported_by_model=label in trained,
+            )
+        )
+
+    cards.sort(key=lambda card: (card.crop, card.is_healthy, card.condition))
+    return schemas.DiseaseListOut(
+        diseases=cards,
+        total=len(cards),
+        crops=sorted({card.crop for card in cards}),
+        model_classes=len(trained),
     )
 
 

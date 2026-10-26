@@ -40,6 +40,43 @@
     --radius: 0.75rem;
   }
 
+  /*
+   * Dark theme. Not inverted greys: the greens stay green and the paper becomes deep
+   * forest, so the interface still reads as an agricultural tool rather than a terminal.
+   * Contrast is kept above 4.5:1 for body text.
+   */
+  .dark {
+    --background: 155 18% 8%;
+    --foreground: 40 20% 94%;
+
+    --card: 155 15% 12%;
+    --card-foreground: 40 20% 94%;
+
+    --muted: 155 12% 17%;
+    --muted-foreground: 140 8% 66%;
+
+    --primary: 145 45% 62%;
+    --primary-foreground: 155 30% 9%;
+
+    --secondary: 155 12% 19%;
+    --secondary-foreground: 40 20% 92%;
+
+    --accent: 42 80% 58%;
+    --accent-foreground: 155 30% 9%;
+
+    --destructive: 4 70% 58%;
+    --destructive-foreground: 155 30% 9%;
+
+    --border: 155 10% 22%;
+    --input: 155 10% 26%;
+    --ring: 145 45% 62%;
+
+    --risk-low: 145 42% 55%;
+    --risk-moderate: 42 78% 56%;
+    --risk-high: 25 84% 60%;
+    --risk-critical: 4 72% 60%;
+  }
+
   * {
     @apply border-border;
   }
@@ -77,5 +114,58 @@
   /* Numbers in tables and scores should line up. */
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* Horizontal ticker. Paused when the user asks for reduced motion — this is a field
+     tool used by people who may be prone to motion sickness, and a moving strip is
+     decoration, not information. */
+  @keyframes ticker-scroll {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-ticker {
+    animation: ticker-scroll 42s linear infinite;
+    will-change: transform;
+  }
+
+  .animate-ticker:hover,
+  .animate-ticker:focus-within {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ticker {
+      animation: none;
+      transform: none;
+    }
+  }
+
+  /* Gentle entrance for cards, disabled for reduced motion. */
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-rise {
+    animation: rise-in 0.4s ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rise {
+      animation: none;
+    }
   }
 }

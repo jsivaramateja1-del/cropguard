@@ -97,7 +97,9 @@ class Report(Base):
     # --- who and what -------------------------------------------------------
     farmer_name: Mapped[str] = mapped_column(String(120), nullable=False)
     crop_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    image_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Nullable: retention deletes old image bytes, and a report without a photo is a
+    # legitimate state that the UI renders as a placeholder.
+    image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     # --- AI prediction (immutable) -----------------------------------------
     predicted_disease: Mapped[str] = mapped_column(String(120), nullable=False, index=True)

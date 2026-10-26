@@ -291,6 +291,73 @@ test.describe('expert page', () => {
   })
 })
 
+test.describe('theme and disease grid', () => {
+  test('dark mode can be turned on and is remembered', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    // Default follows the device; switch explicitly.
+    await page.getByRole('button', { name: /dark theme/i }).click()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    expect(await page.evaluate(() => localStorage.getItem('cropguard.theme'))).toBe('dark')
+
+    // And it survives a reload, applied before React mounts.
+    await page.reload()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+
+    await page.getByRole('button', { name: /light theme/i }).click()
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+  })
+
+  test('the home page shows a disease preview and a ticker', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: /what cropguard can recognise/i })).toBeVisible()
+    // Only screenable conditions appear in the home preview.
+    await expect(page.getByRole('button', { name: /late blight on tomato/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /yellow rust on wheat/i })).toHaveCount(0)
+
+    // The ticker carries advisory facts, not invented text.
+    await expect(page.getByLabel(/cropguard facts/i)).toBeVisible()
+    await expect(page.getByText(/cool, wet weather/i).first()).toBeVisible()
+  })
+
+  test('the disease page filters and marks model coverage', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/diseases')
+
+    await expect(page.getByRole('heading', { name: /what cropguard knows/i })).toBeVisible()
+    await expect(page.getByText(/5 conditions/i)).toBeVisible()
+    // Four of the five mock entries are screenable; the count is derived, not guessed.
+    await expect(page.getByText(/4 screenable/i)).toBeVisible()
+
+    // Wheat is in the knowledge base but not in the model, and says so.
+    await expect(page.getByRole('button', { name: /yellow rust on wheat/i })).toBeVisible()
+    await expect(page.getByText(/advisory only/i).first()).toBeVisible()
+
+    // Filtering by crop narrows the grid.
+    await page.getByLabel(/filter by crop/i).selectOption('Rice')
+    await expect(page.getByRole('button', { name: /brown spot on rice/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /late blight on tomato/i })).toHaveCount(0)
+
+    // And a search matches symptoms, not just names.
+    await page.getByLabel(/filter by crop/i).selectOption('')
+    await page.getByLabel(/search diseases/i).fill('mould')
+    await expect(page.getByRole('button', { name: /late blight on tomato/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /early blight on tomato/i })).toHaveCount(0)
+  })
+
+  test('a disease card opens its details', async ({ page }) => {
+    await mockApi(page)
+    await page.goto('/diseases')
+
+    await page.getByRole('button', { name: /late blight on tomato/i }).click()
+    await expect(page.getByText(/the most destructive disease/i)).toBeVisible()
+    await expect(page.getByRole('link', { name: /check a leaf/i })).toBeVisible()
+  })
+})
+
 test.describe('password reset', () => {
   test('the account page offers a reset link and confirms without revealing accounts', async ({
     page,

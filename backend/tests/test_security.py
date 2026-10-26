@@ -47,6 +47,7 @@ def leaf() -> bytes:
 @pytest.fixture(autouse=True)
 def _clean():
     with database.SessionLocal() as session:
+        session.query(models.ReportImage).delete()
         session.query(models.FollowUp).delete()
         session.query(models.AuditEvent).delete()
         session.query(models.Report).delete()
@@ -681,3 +682,109 @@ def test_report_risk_filter_works(client, leaf):
     invalid = client.get("/api/reports", params={"risk": "Extreme"}, headers=EXPERT)
     assert invalid.status_code == 422
     assert "Unknown risk level" in invalid.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Image retention
+# ---------------------------------------------------------------------------
+def test_retention_deletes_old_images_but_keeps_reports(client, leaf):
+    """The report survives; only the bytes go, and image_url is cleared."""
+    from datetime import datetime, timedelta, timezone
+
+    import maintenance
+
+    created = _create(client, leaf)
+    report_id = created["report"]["id"]
+    token = created["report"]["image_url"].rsplit("/", 1)[-1]
+
+    with database.SessionLocal() as session:
+        image = session.execute(
+            select(models.ReportImage).where(models.ReportImage.token == token)
+        ).scalar_one()
+        image.created_at = datetime.now(timezone.utc) - timedelta(days=200)
+        session.commit()
+
+    with database.SessionLocal() as session:
+        result = maintenance.purge_expired_images(session, days=90)
+        assert result.deleted_images == 1
+        assert result.freed_bytes > 0
+
+    with database.SessionLocal() as session:
+        assert session.get(models.Report, report_id) is not None, "the report must survive"
+        report = session.get(models.Report, report_id)
+        assert report.image_url is None, "the UI needs a null url to show its placeholder"
+        assert session.execute(select(models.ReportImage)).scalars().all() == []
+
+
+def test_retention_keeps_recent_images(client, leaf):
+    import maintenance
+
+    created = _create(client, leaf)
+    with database.SessionLocal() as session:
+        result = maintenance.purge_expired_images(session, days=90)
+        assert result.deleted_images == 0
+
+    url = created["report"]["image_url"]
+    assert client.get(url).status_code == 200
+
+
+def test_retention_enforces_the_size_cap(client, leaf, monkeypatch):
+    import maintenance
+    from config import settings
+
+    monkeypatch.setattr(settings, "image_max_total_mb", 0, raising=False)
+    _create(client, leaf)
+
+    with database.SessionLocal() as session:
+        result = maintenance.purge_expired_images(session)
+        assert result.reason == "size cap"
+        assert result.deleted_images >= 1
+        assert result.remaining_bytes == 0
+
+
+def test_retention_endpoint_is_admin_only(client):
+    assert client.post("/api/admin/maintenance/retention").status_code == 401
+
+    # A signed-in farmer is authenticated but not permitted.
+    farmer = client.post(
+        "/api/auth/register",
+        json={"email": "farmer@example.com", "password": "a-long-password-1", "display_name": "Farmer"},
+    ).json()["access_token"]
+    assert client.post(
+        "/api/admin/maintenance/retention", headers={"Authorization": f"Bearer {farmer}"}
+    ).status_code == 403
+
+    assert client.post("/api/admin/maintenance/retention", headers=ADMIN).status_code == 200
+
+
+def test_health_reports_image_usage(client, leaf):
+    _create(client, leaf)
+    usage = client.get("/health").json()["checks"]["images"]
+    assert usage["images"] >= 1
+    assert usage["retention_days"] == 90
+    assert usage["max_total_mb"] > 0
+
+
+def test_diseases_endpoint_is_public_and_marks_model_coverage(client):
+    """The grid must not imply every advisory entry can be diagnosed from a photo."""
+    response = client.get("/api/diseases")
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["total"] == 21
+    assert "Tomato" in body["crops"]
+    assert body["model_classes"] == len(main.get_model_service().class_names)
+
+    supported = [card for card in body["diseases"] if card["supported_by_model"]]
+    unsupported = [card for card in body["diseases"] if not card["supported_by_model"]]
+    assert supported, "the fixture model recognises some classes"
+    assert unsupported, "wheat entries are in the advisory DB but not in the model"
+    assert all(card["crop"] != "Wheat" for card in supported)
+
+    # Cards carry real advisory content, not placeholders.
+    late_blight = next(
+        card for card in body["diseases"] if card["label"] == "Tomato___Late_blight"
+    )
+    assert late_blight["symptoms"]
+    assert late_blight["summary"]
+    assert late_blight["is_healthy"] is False

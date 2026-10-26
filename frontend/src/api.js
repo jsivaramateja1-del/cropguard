@@ -447,6 +447,16 @@ export async function decideExpertRequest(staffToken, applicationId, decision, n
   }
 }
 
+/** The advisory knowledge base as cards. Public reference material. */
+export async function fetchDiseases() {
+  try {
+    const { data } = await api.get('/api/diseases')
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
 /** The deployed model's contract: classes, crops, healthy-class coverage, thresholds. */
 export async function fetchModelContract() {
   try {

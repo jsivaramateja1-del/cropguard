@@ -175,6 +175,80 @@ export const outbreaks = {
 }
 
 /** One row of the staff review queue, as the expert page receives it. */
+/** The advisory knowledge base, as /api/diseases returns it. */
+export const diseases = {
+  total: 5,
+  crops: ['Potato', 'Rice', 'Tomato'],
+  model_classes: 8,
+  diseases: [
+    {
+      label: 'Tomato___Late_blight',
+      crop: 'Tomato',
+      condition: 'Late blight',
+      pathogen_type: 'Oomycete',
+      severity: 'high',
+      is_healthy: false,
+      summary: 'The most destructive disease of tomato and potato.',
+      symptoms: ['Water-soaked patches on leaves', 'White mould on the underside'],
+      favorable_conditions: ['Cool, wet weather'],
+      monitoring: 'Check every two days',
+      supported_by_model: true,
+    },
+    {
+      label: 'Tomato___Early_blight',
+      crop: 'Tomato',
+      condition: 'Early blight',
+      pathogen_type: 'Fungus',
+      severity: 'moderate',
+      is_healthy: false,
+      summary: 'Concentric brown rings on older leaves.',
+      symptoms: ['Brown spots with rings', 'Yellowing around spots'],
+      favorable_conditions: ['Warm, humid weather'],
+      monitoring: 'Weekly',
+      supported_by_model: true,
+    },
+    {
+      label: 'Rice___Brown_spot',
+      crop: 'Rice',
+      condition: 'Brown spot',
+      pathogen_type: 'Fungus',
+      severity: 'moderate',
+      is_healthy: false,
+      summary: 'Oval brown lesions on rice leaves.',
+      symptoms: ['Oval brown lesions', 'Grey centres'],
+      favorable_conditions: ['Poor nutrition', 'High humidity'],
+      monitoring: 'Weekly',
+      supported_by_model: true,
+    },
+    {
+      label: 'Wheat___Yellow_rust',
+      crop: 'Wheat',
+      condition: 'Yellow rust',
+      pathogen_type: 'Fungus',
+      severity: 'high',
+      is_healthy: false,
+      summary: 'Yellow stripes of pustules along wheat leaves.',
+      symptoms: ['Yellow pustules in stripes'],
+      favorable_conditions: ['Cool nights, mild days'],
+      monitoring: 'Weekly',
+      supported_by_model: false,
+    },
+    {
+      label: 'Tomato___healthy',
+      crop: 'Tomato',
+      condition: 'Healthy',
+      pathogen_type: null,
+      severity: null,
+      is_healthy: true,
+      summary: 'No disease detected.',
+      symptoms: [],
+      favorable_conditions: [],
+      monitoring: null,
+      supported_by_model: true,
+    },
+  ],
+}
+
 export const reviewQueue = {
   total: 1,
   items: [
@@ -237,6 +311,7 @@ export async function mockApi(page, overrides = {}) {
     outbreaks,
     followUpReport: reportForFollowUp,
     reviewQueue,
+    diseases,
     ...overrides,
   }
 
@@ -245,6 +320,9 @@ export async function mockApi(page, overrides = {}) {
   )
   await page.route('**/api/model', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(responses.model) }),
+  )
+  await page.route('**/api/diseases', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(responses.diseases) }),
   )
   await page.route('**/api/outbreaks**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(responses.outbreaks) }),

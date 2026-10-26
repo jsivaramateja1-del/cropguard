@@ -36,6 +36,7 @@ def client() -> TestClient:
 @pytest.fixture(autouse=True)
 def _clean():
     with database.SessionLocal() as session:
+        session.query(models.ReportImage).delete()
         session.query(models.FollowUp).delete()
         session.query(models.AuditEvent).delete()
         session.query(models.Report).delete()
