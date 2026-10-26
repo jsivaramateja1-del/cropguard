@@ -33,6 +33,8 @@ const CHECKS = [
   ['safety disclaimer', 'potential diagnosis'],
   ['crop coverage note', 'Wheat has no trained classes'],
   ['outbreak nav', 'Outbreaks'],
+  ['follow-up nav', 'Follow up'],
+  ['expert nav', 'Expert'],
 ]
 
 let failures = 0
@@ -71,7 +73,7 @@ const mapHtml = renderToString(
     <App />
   </MemoryRouter>,
 )
-const mapFallback = mapHtml.includes('Loading the map')
+const mapFallback = mapHtml.includes('Loading')
 console.log(`${mapFallback ? 'PASS' : 'FAIL'}  map route lazy-loads behind a fallback`)
 if (!mapFallback) failures += 1
 

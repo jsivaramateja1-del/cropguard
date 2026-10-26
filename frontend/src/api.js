@@ -196,6 +196,44 @@ export async function fetchReport(reportId, reportToken) {
   }
 }
 
+/** Look a report up by its public reference (CG-00042) using the farmer's access code. */
+export async function fetchReportByReference(reference, reportToken) {
+  try {
+    const { data } = await api.get(
+      `/api/reports/by-reference/${encodeURIComponent(reference.trim())}`,
+      { headers: reportToken ? { 'X-Report-Token': reportToken } : {} },
+    )
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** The expert review queue. Requires a staff bearer token. */
+export async function fetchReviewQueue(expertToken, { status = 'Pending_Expert_Review', limit = 50 } = {}) {
+  try {
+    const { data } = await api.get('/api/reports', {
+      params: { status, limit },
+      headers: { Authorization: `Bearer ${expertToken}` },
+    })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** Confirm or correct a diagnosis. Requires a staff bearer token. */
+export async function verifyReport(reportId, expertToken, payload) {
+  try {
+    const { data } = await api.patch(`/api/reports/${reportId}/verify`, payload, {
+      headers: { Authorization: `Bearer ${expertToken}` },
+    })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
 /** Add a follow-up observation to a report the caller owns. */
 export async function addFollowUp(reportId, reportToken, { conditionStatus, notes, file }) {
   const form = new FormData()
@@ -209,6 +247,16 @@ export async function addFollowUp(reportId, reportToken, { conditionStatus, note
         ...(reportToken ? { 'X-Report-Token': reportToken } : {}),
       },
     })
+    return data
+  } catch (error) {
+    throw toApiError(error)
+  }
+}
+
+/** The deployed model's contract: classes, crops, healthy-class coverage, thresholds. */
+export async function fetchModelContract() {
+  try {
+    const { data } = await api.get('/api/model')
     return data
   } catch (error) {
     throw toApiError(error)

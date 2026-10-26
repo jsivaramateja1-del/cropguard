@@ -803,6 +803,41 @@ def list_reports(
     )
 
 
+@app.get(
+    "/api/reports/by-reference/{reference}",
+    response_model=schemas.ReportOut,
+    summary="Look a report up by its reference number",
+)
+def get_report_by_reference(
+    reference: str,
+    x_report_token: Optional[str] = Header(default=None, alias="X-Report-Token"),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> schemas.ReportOut:
+    """Lookup by the human-facing reference (CG-00042).
+
+    A farmer reads the reference off the screen and has no idea what the internal id is,
+    so the follow-up page needs this. The reference is public; the access token is still
+    what authorises the read.
+    """
+    cleaned = reference.strip().upper()
+    if not cleaned.startswith("CG-"):
+        cleaned = f"CG-{cleaned}"
+    report = db.execute(
+        select(Report).where(Report.reference == cleaned)
+    ).scalar_one_or_none()
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No report with that reference. Check the number, and remember that "
+                "reading it also needs the access code shown when it was created."
+            ),
+        )
+    _authorise_report(report, x_report_token, authorization)
+    return schemas.ReportOut.model_validate(report)
+
+
 @app.get("/api/reports/{report_id}", response_model=schemas.ReportOut, summary="One report")
 def get_report(
     report_id: int,

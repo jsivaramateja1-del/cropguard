@@ -4,7 +4,17 @@ import { Leaf, ShieldAlert } from 'lucide-react'
 import DiagnosePage from './pages/DiagnosePage.jsx'
 // Leaflet is ~150 kB; loading it only when the map is opened keeps the diagnosis
 // page fast on a rural connection.
+function RouteLoading() {
+  return (
+    <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+      Loading…
+    </div>
+  )
+}
+
 const OutbreakMapPage = lazy(() => import('./pages/OutbreakMapPage.jsx'))
+const ExpertPage = lazy(() => import('./pages/ExpertPage.jsx'))
+const FollowUpPage = lazy(() => import('./pages/FollowUpPage.jsx'))
 import { Button } from './components/ui/button.jsx'
 
 /**
@@ -45,6 +55,20 @@ function Layout({ children }) {
               {({ isActive }) => (
                 <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
                   Outbreaks
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/follow-up">
+              {({ isActive }) => (
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                  Follow up
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/expert">
+              {({ isActive }) => (
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                  Expert
                 </Button>
               )}
             </NavLink>
@@ -90,15 +114,25 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DiagnosePage />} />
         <Route
+          path="/follow-up"
+          element={
+            <Suspense fallback={<RouteLoading />}>
+              <FollowUpPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/expert"
+          element={
+            <Suspense fallback={<RouteLoading />}>
+              <ExpertPage />
+            </Suspense>
+          }
+        />
+        <Route
           path="/outbreaks"
           element={
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-                  Loading the map…
-                </div>
-              }
-            >
+            <Suspense fallback={<RouteLoading />}>
               <OutbreakMapPage />
             </Suspense>
           }

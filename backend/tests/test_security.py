@@ -580,3 +580,36 @@ def test_unreplaced_placeholder_is_diagnosed(monkeypatch):
         assert database.credential_diagnostics()["problem"] == "placeholder_not_replaced"
     finally:
         database.engine, database.DATABASE_URL = original_engine, original_url
+
+
+# ---------------------------------------------------------------------------
+# Lookup by public reference (the follow-up page path)
+# ---------------------------------------------------------------------------
+def test_reference_lookup_needs_the_access_code(client, leaf):
+    created = _create(client, leaf)
+    reference = created["report"]["reference"]
+
+    assert client.get(f"/api/reports/by-reference/{reference}").status_code == 404
+
+    response = client.get(
+        f"/api/reports/by-reference/{reference}",
+        headers={"X-Report-Token": created["access_token"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == created["report"]["id"]
+
+
+def test_reference_lookup_accepts_a_bare_number_and_any_case(client, leaf):
+    created = _create(client, leaf)
+    reference = created["report"]["reference"]  # CG-00001
+    token = {"X-Report-Token": created["access_token"]}
+
+    for variant in (reference.lower(), reference.replace("CG-", ""), f"  {reference}  "):
+        response = client.get(f"/api/reports/by-reference/{variant.strip()}", headers=token)
+        assert response.status_code == 200, variant
+
+
+def test_reference_lookup_unknown_reference(client):
+    response = client.get("/api/reports/by-reference/CG-99999", headers=EXPERT)
+    assert response.status_code == 404
+    assert "No report with that reference" in response.json()["detail"]
