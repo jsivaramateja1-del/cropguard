@@ -82,6 +82,22 @@ def _configured_tokens() -> Dict[str, str]:
     return tokens
 
 
+_legacy_warned = False
+
+
+def _warn_legacy_once() -> None:
+    """Log the deprecation once per process, not once per request."""
+    global _legacy_warned
+    if _legacy_warned:
+        return
+    _legacy_warned = True
+    logger.warning(
+        "a request authenticated with the legacy shared staff token. It is deprecated: "
+        "create expert accounts through the approval flow and set "
+        "ALLOW_LEGACY_STAFF_TOKEN=false, then remove EXPERT_TOKEN."
+    )
+
+
 def staff_identity(authorization: Optional[str]) -> Optional[Tuple[str, str]]:
     """Return (role, display_name) for a valid bearer token, else None.
 
@@ -94,8 +110,13 @@ def staff_identity(authorization: Optional[str]) -> Optional[Tuple[str, str]]:
     if not supplied:
         return None
 
+    if not settings.allow_legacy_staff_token:
+        # The migration is complete: only account tokens are accepted.
+        return None
+
     for role, expected in _configured_tokens().items():
         if hmac.compare_digest(supplied, expected):
+            _warn_legacy_once()
             name = (
                 settings.expert_name if role == ROLE_EXPERT else settings.admin_name
             ).strip() or role

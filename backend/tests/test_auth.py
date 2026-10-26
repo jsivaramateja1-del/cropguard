@@ -842,3 +842,53 @@ def test_forgot_password_is_rate_limited(client, monkeypatch):
         client.post("/api/auth/forgot-password", json={"email": "spam@example.com"})
     blocked = client.post("/api/auth/forgot-password", json={"email": "spam@example.com"})
     assert blocked.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# Retiring the legacy shared staff token
+# ---------------------------------------------------------------------------
+def test_legacy_staff_token_works_while_enabled(client, leaf):
+    from config import settings
+
+    assert settings.allow_legacy_staff_token is True
+    created = client.post(
+        "/api/analyze",
+        files={"image": ("leaf.jpg", leaf, "image/jpeg")},
+        data={
+            "crop_type": "Tomato",
+            "farmer_name": "Ravi Kumar",
+            "latitude": "16.5",
+            "longitude": "80.6",
+            "request_expert_review": "true",
+        },
+    ).json()
+    response = client.patch(
+        f"/api/reports/{created['report']['id']}/verify",
+        json={"action": "confirm", "expert_name": "Dr Legacy"},
+        headers={"Authorization": "Bearer test-expert-token"},
+    )
+    assert response.status_code == 200
+
+
+def test_legacy_token_is_refused_once_disabled(client, monkeypatch):
+    from config import settings
+
+    monkeypatch.setattr(settings, "allow_legacy_staff_token", False, raising=False)
+    assert client.get(
+        "/api/reports", headers={"Authorization": "Bearer test-expert-token"}
+    ).status_code == 401
+
+
+def test_account_tokens_still_work_when_the_legacy_token_is_disabled(client, monkeypatch):
+    """The point of the migration: disabling the shared secret must not lock out experts."""
+    from config import settings
+
+    expert = _make_expert(client)
+    monkeypatch.setattr(settings, "allow_legacy_staff_token", False, raising=False)
+
+    assert client.get("/api/reports", headers=_auth(expert)).status_code == 200
+
+
+def test_health_reports_whether_the_legacy_token_is_enabled(client):
+    body = client.get("/health").json()
+    assert body["checks"]["auth"]["legacy_staff_token_enabled"] is True

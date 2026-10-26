@@ -105,9 +105,24 @@ deprecated.
 | Report ownership | `reports.owner_user_id` links a signed-in farmer's reports; anonymous reports stay reachable only by access code |
 | Account deletion | Deactivates the account, anonymises the farmer name on its reports, keeps the aggregate for the outbreak map |
 
-The legacy `EXPERT_TOKEN` shared secret still authenticates staff. It is kept so the
-already-deployed expert flow keeps working, and it is documented as legacy rather than
-recommended. A JWT for an expert or admin account is the supported path.
+### Retiring the shared staff token
+
+`EXPERT_TOKEN` predates accounts. It still works while `ALLOW_LEGACY_STAFF_TOKEN=true`
+(the default), which is why introducing accounts did not break a running deployment.
+
+Every request that uses it logs a deprecation warning, and `/health` reports
+`auth.legacy_staff_token_enabled` so the migration state is never a guess.
+
+To finish the migration:
+
+1. Have each expert register an account and request expert access.
+2. Approve the requests from the admin account.
+3. Confirm each expert can sign in at `/expert` with email and password.
+4. Set `ALLOW_LEGACY_STAFF_TOKEN=false` and redeploy — the shared secret stops working,
+   account tokens keep working.
+5. Delete `EXPERT_TOKEN` from the environment.
+
+Step 4 is reversible: set it back to `true` if something was missed. Only step 5 is not.
 
 ## Expert approval workflow
 

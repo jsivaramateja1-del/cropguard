@@ -67,8 +67,10 @@ Stated plainly because a demo that hides these is worth less than one that names
 - **Not field-validated.** Accuracy figures come from PlantVillage lab images, the same
   source the model trained on. Phone photos of real field leaves will score lower, and no
   number for that exists yet.
-- **Shared expert token, not user accounts.** One secret per role: no registration, no
-  per-expert revocation, no attribution between two experts using the same token.
+- **The shared staff token still works.** Accounts are the supported path, but
+  `EXPERT_TOKEN` is accepted while `ALLOW_LEGACY_STAFF_TOKEN` is true, so two experts
+  using it cannot be told apart in the audit log. Set it to false once everyone has an
+  account.
 - **Uploads are local-disk** unless Cloudinary is configured, so images do not survive a
   redeploy even though the database rows do.
 - **End-to-end tests are mocked by default.** 44 Playwright checks run against a mocked
@@ -166,6 +168,7 @@ pip-audit -r backend/requirements-deploy.txt --no-deps --disable-pip
 | `DATABASE_URL` | no (defaults to SQLite) | Postgres in production. **Percent-encode special characters in the password** — an unencoded `@` silently breaks the host |
 | `EXPERT_TOKEN` | for review | Bearer token for expert endpoints. No default: unset means no privileged access |
 | `ADMIN_TOKEN` | optional | Same powers, operational use |
+| `ALLOW_LEGACY_STAFF_TOKEN` | no (true) | Set false to retire the shared staff secret once every expert has an account |
 | `FRONTEND_ORIGIN` | yes in production | Allowed browser origin; single-label wildcards supported |
 | `MODEL_PATH` | no | Path to the ONNX artifact |
 | `CONFIDENCE_THRESHOLD` | no (0.75) | Below this, a report goes to expert review |

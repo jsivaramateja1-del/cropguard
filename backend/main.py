@@ -597,6 +597,9 @@ def health() -> dict:
             "auth": {
                 "staff_configured": security.staff_auth_configured(),
                 "accounts": True,
+                # Deprecated but still accepted while this is true. Visible so the
+                # migration state is never a guess.
+                "legacy_staff_token_enabled": settings.allow_legacy_staff_token,
             },
             "email": emailer.email_status(),
         },

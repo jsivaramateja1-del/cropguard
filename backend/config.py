@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     login_failure_window: int = 900
 
     # --- staff authentication (legacy shared secret) --------------------------
+    # The shared EXPERT_TOKEN predates accounts. It still works while this is true, so a
+    # deployment is never broken by the migration — but it is deprecated, every use is
+    # logged, and /health reports that it is enabled. Set to false once every expert has
+    # an account, then delete EXPERT_TOKEN itself.
+    allow_legacy_staff_token: bool = True
     # Prototype-grade identity: one shared secret per role, supplied as a bearer token.
     # No default is provided, so an unconfigured deployment has no privileged access at
     # all rather than a default password. See docs/security.md for the upgrade path.
