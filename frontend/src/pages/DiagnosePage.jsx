@@ -61,12 +61,19 @@ function HealthBanner() {
     fetchHealth()
       .then((health) => {
         if (cancelled || health.status === 'ok') return
-        const modelProblem = health.model && health.model.available === false
-        setProblem(
-          modelProblem
-            ? `The diagnosis model is not loaded on the server${health.model.error ? `: ${health.model.error}` : '.'}`
-            : 'The server reports a degraded state. Some features may not work.',
-        )
+        // Matches the /health contract: status plus per-component checks. The model is
+        // essential, so an unloaded model means the app cannot diagnose at all.
+        const model = health.checks?.model
+        const storage = health.checks?.storage
+        if (model && model.ok === false) {
+          setProblem(
+            `The diagnosis model is not loaded on the server${model.error ? `: ${model.error}` : '.'}`,
+          )
+        } else if (storage && storage.writable === false) {
+          setProblem('The server cannot store photos right now, so analyses will fail.')
+        } else {
+          setProblem('The server reports a problem. Some features may not work.')
+        }
       })
       .catch((error) => {
         if (!cancelled) setProblem(diagnoseConnectionFailure(error).message)
