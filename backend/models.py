@@ -23,15 +23,17 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
-    LargeBinary,
-    Enum as SAEnum,
     Float,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     func,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

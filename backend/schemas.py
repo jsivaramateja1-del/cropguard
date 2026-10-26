@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 from advisory import supported_diseases
-from models import CROP_TYPES, FollowUpCondition, ReportStatus, WeatherRiskLevel
+from models import FollowUpCondition, ReportStatus, WeatherRiskLevel
 
 CropType = Literal["Tomato", "Rice", "Potato", "Wheat"]
 
