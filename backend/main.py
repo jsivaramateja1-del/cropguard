@@ -34,9 +34,10 @@ from sqlalchemy.orm import Session, selectinload
 import advisory as advisory_module
 import schemas
 import storage
+import database
 import security
 from config import settings
-from database import database_info, get_db, init_db
+from database import database_info, get_db, init_db, try_init_db
 from inference import (
     InvalidImage,
     ModelUnavailable,
@@ -71,8 +72,13 @@ API_VERSION = "0.3.0"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
-    init_db()
-    logger.info("database ready: %s", database_info())
+    # A database that cannot be reached must not stop the API from starting: /health and
+    # the storage-free endpoints still work, and the reason is logged instead of being
+    # hidden behind a process exit.
+    if try_init_db() is None:
+        logger.info("database ready: %s", database_info())
+    else:
+        logger.warning("starting with the database unavailable; storage endpoints will return 503")
 
     # Warm the model so the first farmer does not pay the load cost. A missing or
     # broken artifact must not stop the API from starting — /health reports it and
@@ -436,9 +442,12 @@ def health() -> dict:
         "version": API_VERSION,
         "checks": {
             "database": {
-                "ok": db_ok,
+                "ok": db_ok and database.INIT_ERROR is None,
                 "dialect": database_info()["dialect"],
-                "error": db_error,
+                # Whether the schema was prepared at startup. A reachable database whose
+                # migrations never ran is still not usable.
+                "initialised": database.INIT_ERROR is None,
+                "error": db_error or database.INIT_ERROR,
             },
             "model": {
                 "ok": bool(model["available"]),

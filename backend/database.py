@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Generator
 
+from fastapi import HTTPException, status
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -82,6 +83,16 @@ def get_db() -> Generator[Session, None, None]:
     Committing is the caller's responsibility so that a request can fail between
     two writes without leaving a half-applied change behind.
     """
+    if INIT_ERROR:
+        # Storage-dependent endpoints fail with a clear, honest status rather than a 500
+        # carrying a driver traceback.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "The database is unavailable, so reports cannot be stored or read. "
+                "Diagnosis, model information and weather still work."
+            ),
+        )
     session = SessionLocal()
     try:
         yield session
@@ -125,6 +136,40 @@ def _apply_additive_migrations() -> None:
                 connection.execute(text(statement))
             except Exception as error:  # noqa: BLE001 - non-fatal, log and continue
                 logger.warning("migration step skipped (%s): %s", statement, error)
+
+
+# Set when the database could not be prepared at startup. The API keeps serving the
+# endpoints that do not need storage (/health, /api/model, /api/weather) and reports the
+# failure honestly instead of the whole process dying. A deploy should not be taken down
+# by a database that is briefly unreachable — that turns a recoverable problem into an
+# outage, and it hides the reason behind "exited with status 3".
+INIT_ERROR: Optional[str] = None
+
+
+def try_init_db() -> Optional[str]:
+    """Initialise the database, returning an error description instead of raising."""
+    global INIT_ERROR
+    try:
+        init_db()
+        INIT_ERROR = None
+    except Exception as error:  # noqa: BLE001 - startup must not crash on this
+        INIT_ERROR = f"{type(error).__name__}: {error}"
+        logger.error("database unavailable at startup: %s", INIT_ERROR)
+        if "supabase.co" in DATABASE_URL and "pooler" not in DATABASE_URL:
+            logger.error(
+                "DATABASE_URL points at Supabase's direct host. That host is IPv6-only on "
+                "new projects and Render's free tier has no IPv6 egress. Use the Session "
+                "pooler connection string instead "
+                "(aws-<n>-<region>.pooler.supabase.com:5432)."
+            )
+        elif "could not translate host name" in str(error).lower():
+            logger.error(
+                "The database host could not be resolved. Check the hostname in "
+                "DATABASE_URL — for Supabase it must be the pooler host."
+            )
+        elif "password authentication failed" in str(error).lower():
+            logger.error("The database rejected the credentials. Reset the password and update DATABASE_URL.")
+    return INIT_ERROR
 
 
 def init_db() -> None:

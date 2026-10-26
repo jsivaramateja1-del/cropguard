@@ -428,3 +428,48 @@ def test_outbreaks_empty_database_is_valid(client):
     payload = client.get("/api/outbreaks").json()
     assert payload["points"] == []
     assert payload["summary"]["total_reports"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Startup resilience
+# ---------------------------------------------------------------------------
+def test_api_starts_and_reports_an_unreachable_database(monkeypatch):
+    """An unreachable database must not take the whole service down.
+
+    This is the Render failure that produced "Exited with status 3": init_db() raised
+    during startup and uvicorn aborted. The API should start, say the database is down,
+    and keep serving everything that does not need storage.
+    """
+    import database
+    from sqlalchemy import create_engine
+
+    from sqlalchemy.orm import sessionmaker
+
+    bad_engine = create_engine("postgresql://u:p@127.0.0.1:1/none")
+    original_engine = database.engine
+    original_session = database.SessionLocal
+    monkeypatch.setattr(database, "engine", bad_engine)
+    # The session factory is bound at import time, so it has to be redirected too for the
+    # health check to see the same failure a real deployment would.
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=bad_engine, autoflush=False))
+    monkeypatch.setattr(database, "INIT_ERROR", None)
+    try:
+        error = database.try_init_db()
+        assert error is not None, "an unreachable database must be reported, not raised"
+        assert "OperationalError" in error or "Error" in error
+
+        with TestClient(main.app) as client:
+            health = client.get("/health")
+            assert health.status_code == 200
+            body = health.json()
+            assert body["status"] == "unhealthy"
+            assert body["checks"]["database"]["ok"] is False
+            assert body["checks"]["database"]["initialised"] is False
+            # Storage-free endpoints still work.
+            assert client.get("/api/model").status_code == 200
+            # Storage-dependent ones fail honestly rather than with a traceback.
+            assert client.get("/api/outbreaks").status_code == 503
+    finally:
+        database.engine = original_engine
+        database.SessionLocal = original_session
+        database.INIT_ERROR = None
