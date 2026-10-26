@@ -144,16 +144,65 @@ def _apply_additive_migrations() -> None:
 # by a database that is briefly unreachable — that turns a recoverable problem into an
 # outage, and it hides the reason behind "exited with status 3".
 INIT_ERROR: Optional[str] = None
+INIT_REASON: Optional[str] = None
+
+
+def classify_db_error(message: str) -> tuple:
+    """Turn a driver message into (reason_code, hint) safe to publish.
+
+    The raw message stays in the logs; /health gets a code and a fix, never a hostname,
+    username or password. This exists because "OperationalError" alone is useless to
+    whoever is staring at a failed deploy.
+    """
+    text = message.lower()
+    if "could not translate host name" in text or "name or service not known" in text:
+        return (
+            "host_not_found",
+            "The database hostname does not resolve from this server. On Render, Supabase's "
+            "direct host is IPv6-only and cannot be reached — use the Session pooler "
+            "hostname (aws-<n>-<region>.pooler.supabase.com) instead.",
+        )
+    if "network is unreachable" in text:
+        return (
+            "no_route",
+            "This server has no route to the database address. Supabase's direct host is "
+            "IPv6-only; switch DATABASE_URL to the Session pooler connection string.",
+        )
+    if "password authentication failed" in text or "authentication failed" in text:
+        return (
+            "auth_failed",
+            "The database rejected the credentials. Reset the database password in "
+            "Supabase and update DATABASE_URL (URL-encode characters such as @ and #).",
+        )
+    if "connection refused" in text:
+        return (
+            "connection_refused",
+            "Nothing is listening on that host and port. Check the port: 5432 for the "
+            "session pooler, 6543 for the transaction pooler.",
+        )
+    if "timeout" in text or "timed out" in text:
+        return (
+            "timeout",
+            "The connection timed out. A free database may be waking up; retry shortly. If "
+            "it persists, confirm the hostname and that the project is not paused.",
+        )
+    if "ssl" in text or "certificate" in text:
+        return ("tls_error", "TLS negotiation failed. Append ?sslmode=require to DATABASE_URL.")
+    if "too many connections" in text:
+        return ("too_many_connections", "The connection pool is exhausted. Reduce pool_size or restart the service.")
+    return ("unknown", "See the service logs for the driver message.")
 
 
 def try_init_db() -> Optional[str]:
     """Initialise the database, returning an error description instead of raising."""
-    global INIT_ERROR
+    global INIT_ERROR, INIT_REASON
     try:
         init_db()
         INIT_ERROR = None
+        INIT_REASON = None
     except Exception as error:  # noqa: BLE001 - startup must not crash on this
         INIT_ERROR = f"{type(error).__name__}: {error}"
+        INIT_REASON = classify_db_error(str(error))[0]
         logger.error("database unavailable at startup: %s", INIT_ERROR)
         if "supabase.co" in DATABASE_URL and "pooler" not in DATABASE_URL:
             logger.error(

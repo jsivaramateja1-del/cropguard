@@ -133,10 +133,12 @@ def store_image(
 def storage_status() -> dict:
     """Non-secret summary for /health."""
     uploads = settings.uploads_dir
+    writable = _is_writable(uploads)
     return {
         "backend": "cloudinary" if settings.cloudinary_enabled else "local",
-        "uploads_dir": str(uploads),
-        "uploads_dir_writable": _is_writable(uploads),
+        # `writable` is what /health publishes; the path itself is not exposed.
+        "writable": writable,
+        "uploads_dir_writable": writable,
     }
 
 

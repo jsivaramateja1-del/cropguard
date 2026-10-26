@@ -447,7 +447,14 @@ def health() -> dict:
                 # Whether the schema was prepared at startup. A reachable database whose
                 # migrations never ran is still not usable.
                 "initialised": database.INIT_ERROR is None,
-                "error": db_error or database.INIT_ERROR,
+                # A code plus a fix, never the driver message: that would carry the
+                # hostname and username. The full message is in the logs.
+                "reason": database.INIT_REASON or (None if db_ok else "query_failed"),
+                "hint": (
+                    database.classify_db_error(database.INIT_ERROR)[1]
+                    if database.INIT_ERROR
+                    else (None if db_ok else "The database answered but the query failed.")
+                ),
             },
             "model": {
                 "ok": bool(model["available"]),
