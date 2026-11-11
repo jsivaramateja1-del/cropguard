@@ -201,7 +201,12 @@ def client_key(request: Request) -> str:
     """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        # Take the RIGHT-most hop. Render appends the address it actually saw to the end of
+        # whatever the client sent, so the left-hand entries are attacker-controlled — keying
+        # on those let one client mint unlimited limiter buckets and never be throttled.
+        candidate = forwarded.split(",")[-1].strip()
+        if candidate:
+            return candidate
     return request.client.host if request.client else "unknown"
 
 

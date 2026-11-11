@@ -45,7 +45,7 @@ ALL_ROLES = (ROLE_FARMER, ROLE_EXPERT, ROLE_ADMIN)
 # Password policy: length is the only rule that matters much, so enforce it plainly
 # instead of demanding character classes that push people towards "Password1!".
 MIN_PASSWORD_LENGTH = 10
-MAX_PASSWORD_LENGTH = 200  # bcrypt ignores anything past 72 bytes; reject rather than truncate
+MAX_PASSWORD_LENGTH = 72  # bcrypt silently ignores bytes past 72, so reject at that boundary
 
 _BCRYPT_ROUNDS = 12
 

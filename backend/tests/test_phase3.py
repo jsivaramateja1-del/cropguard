@@ -486,10 +486,23 @@ def test_analyze_routes_to_expert_on_request(client, leaf_jpeg):
     assert any("asked for an expert" in reason for reason in payload["review_reasons"])
 
 
-def test_missing_report_returns_404(client):
-    response = client.get("/api/reports/999999")
-    assert response.status_code == 404
-    assert "No report with id" in response.json()["detail"]
+def test_missing_report_returns_404(client, leaf_jpeg):
+    """A missing id and a wrong token must be indistinguishable.
+
+    They used to carry different detail strings, which let an unauthenticated caller
+    probe which sequential report ids exist.
+    """
+    missing = client.get("/api/reports/999999")
+    assert missing.status_code == 404
+
+    existing = _analyze(client, leaf_jpeg).json()["report"]
+    wrong_token = client.get(
+        f"/api/reports/{existing['id']}", headers={"X-Report-Token": "not-the-right-token"}
+    )
+    assert wrong_token.status_code == 404
+
+    assert missing.json()["detail"] == wrong_token.json()["detail"]
+    assert "Report not found." == missing.json()["detail"]
 
 
 def test_expert_confirm(client, leaf_jpeg):

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import time
 from typing import Generator, Optional
 
 from fastapi import HTTPException, status
@@ -78,12 +79,37 @@ class Base(DeclarativeBase):
     """Declarative base shared by every model."""
 
 
+# A deployment that starts while the database is asleep — Supabase pauses idle free-tier
+# projects — used to stay broken until a human restarted the service: INIT_ERROR is set
+# once at boot and every storage endpoint then refuses with 503 forever, even after the
+# database comes back. Retry on a cooldown so the service heals itself.
+_INIT_RETRY_SECONDS = 30.0
+_last_init_attempt = 0.0
+
+
+def retry_init_if_due() -> None:
+    """Re-run initialisation when a previous attempt failed and the cooldown has passed."""
+    global _last_init_attempt
+    if INIT_ERROR is None:
+        return
+    now = time.monotonic()
+    if now - _last_init_attempt < _INIT_RETRY_SECONDS:
+        return
+    _last_init_attempt = now
+    logger.info("retrying database initialisation")
+    try_init_db()
+
+
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency yielding a session that is always closed.
 
     Committing is the caller's responsibility so that a request can fail between
     two writes without leaving a half-applied change behind.
     """
+    if INIT_ERROR:
+        # The database may have come back since boot; try once per cooldown before failing.
+        retry_init_if_due()
+
     if INIT_ERROR:
         # Storage-dependent endpoints fail with a clear, honest status rather than a 500
         # carrying a driver traceback.

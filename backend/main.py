@@ -21,6 +21,7 @@ Design notes
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -407,10 +408,7 @@ def _authorise_report(
         return None
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=(
-            "Report not found. Access needs the access token returned when the report was "
-            "created."
-        ),
+        detail="Report not found.",
     )
 
 
@@ -421,7 +419,7 @@ def _load_report(db: Session, report_id: int) -> Report:
     if report is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No report with id {report_id}.",
+            detail="Report not found.",
         )
     return report
 
@@ -528,6 +526,10 @@ def health() -> dict:
     """
     service = get_model_service()
     model = service.describe()
+
+    # A health probe is the one request a monitor makes continuously, so let it repair a
+    # stale startup failure rather than only reporting it.
+    database.retry_init_if_due()
 
     db_ok = True
     try:
@@ -1484,7 +1486,7 @@ def analyze(
     except StorageError as error:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"The leaf image could not be stored: {error}",
+            detail="The leaf image could not be stored. Please try again.",
         ) from error
 
     report_status, review_reasons = _decide_status(
@@ -1915,6 +1917,22 @@ def get_image(token: str, db: Session = Depends(get_db)) -> Response:
     )
 
 
+def _favorable_conditions(entry: dict) -> List[str]:
+    """Conditions that favour this disease, as short phrases.
+
+    The knowledge base stores this as one prose sentence. Passing that straight to a
+    list-typed field split it into single characters — the card rendered "W · a · r"
+    instead of "Warm humid weather...". Split on the punctuation the data already uses.
+    """
+    raw = entry.get("favorable_conditions")
+    if not raw:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(item).strip() for item in raw if str(item).strip()][:3]
+    parts = re.split(r"(?<=[.;])\s+", str(raw).strip())
+    return [part.strip().rstrip(".;") for part in parts if part.strip()][:3]
+
+
 @app.get("/api/diseases", response_model=schemas.DiseaseListOut, summary="Diseases CropGuard knows")
 def list_diseases() -> schemas.DiseaseListOut:
     """The advisory knowledge base as cards.
@@ -1939,7 +1957,7 @@ def list_diseases() -> schemas.DiseaseListOut:
                 is_healthy=bool(entry.get("is_healthy")),
                 summary=entry.get("summary") or "",
                 symptoms=list(entry.get("symptoms") or [])[:4],
-                favorable_conditions=list(entry.get("favorable_conditions") or [])[:3],
+                favorable_conditions=_favorable_conditions(entry),
                 monitoring=entry.get("monitoring"),
                 supported_by_model=label in trained,
             )
@@ -1984,6 +2002,14 @@ def get_outbreaks(
     if disease:
         query = query.where(Report.predicted_disease == disease)
     if risk:
+        # The column is a validated enum, so an unknown value raises inside SQLAlchemy and
+        # surfaces as a 500. Validate here the way the staff queue already does.
+        allowed_risk = {level.value for level in WeatherRiskLevel}
+        if risk not in allowed_risk:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown risk level '{risk}'. Use one of: {', '.join(sorted(allowed_risk))}.",
+            )
         query = query.where(Report.weather_risk_level == risk)
     if region_name:
         query = query.where(Report.region_name.ilike(f"%{region_name}%"))
