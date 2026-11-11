@@ -278,7 +278,10 @@ export default function OutbreakMapPage() {
             })}
           </MapContainer>
 
-          {!loading && points.length === 0 ? (
+          {/* Suppress the empty-state overlay while an error is showing: "no reports"
+              and "could not load" are different facts, and showing both reads as
+              "there is no disease anywhere" when the truth is "the service is down". */}
+          {!loading && !error && points.length === 0 ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 p-6 text-center">
               <div>
                 <MapPin size={22} className="mx-auto mb-1.5 text-muted-foreground" aria-hidden="true" />
@@ -297,10 +300,10 @@ export default function OutbreakMapPage() {
           <Legend />
           <div className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
             <Badge variant="muted" className="tabular">
-              {totalReports} reports
+              {error ? "—" : totalReports} reports
             </Badge>
             <Badge variant="muted" className="tabular">
-              {summary?.points ?? 0} locations
+              {error ? "—" : summary?.points ?? 0} locations
             </Badge>
             <span>Last {summary?.period_days ?? days} days</span>
           </div>
