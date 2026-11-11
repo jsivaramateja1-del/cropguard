@@ -103,7 +103,15 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          # --with-deps shells out to apt-get, which fails the whole job when the runner's
+          # package mirrors are flaky (seen twice on 2026-11-11, "Installation process
+          # exited with code: 100"). Install the browser first — that is what the tests
+          # actually need — then attempt the system libraries, tolerating a mirror failure
+          # because the ubuntu runner image already carries most of them.
+          npx playwright install chromium
+          npx playwright install-deps chromium || echo "system dependencies step failed; continuing"
+
       - name: Build the app
         run: npm run build
       - name: Run the mocked end-to-end suite
