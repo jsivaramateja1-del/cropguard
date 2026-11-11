@@ -21,7 +21,7 @@ import time
 from typing import Generator, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -142,7 +142,7 @@ _ADDED_COLUMNS = {
 
 def _apply_additive_migrations() -> None:
     """Add any missing columns to existing tables, and the indexes that go with them."""
-    from sqlalchemy import inspect, text  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
 
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -181,6 +181,18 @@ def _apply_additive_migrations() -> None:
                 connection.execute(text(statement))
             except Exception as error:  # noqa: BLE001 - non-fatal, log and continue
                 logger.warning("migration step skipped (%s): %s", statement, error)
+
+    # ADD COLUMN IF NOT EXISTS is Postgres-only, and a silently skipped column would break
+    # every report read on SQLite. Check the catalogue and add it only when missing, which
+    # is valid on both engines.
+    try:
+        existing = {column["name"] for column in inspect(connection).get_columns("reports")}
+        if "owner_token_expires_at" not in existing:
+            connection.execute(
+                text("ALTER TABLE reports ADD COLUMN owner_token_expires_at TIMESTAMP")
+            )
+    except Exception as error:  # noqa: BLE001 - non-fatal
+        logger.warning("could not add reports.owner_token_expires_at: %s", error)
 
 
 # Set when the database could not be prepared at startup. The API keeps serving the

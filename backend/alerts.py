@@ -74,8 +74,13 @@ def subscribers_for(
     db: Session, *, latitude: float, longitude: float, crop: str
 ) -> List[tuple]:
     """Confirmed subscribers within their own radius who asked about this crop."""
+    # FOR UPDATE: two analyses of nearby reports handled in parallel threads both read the
+    # old last_notified_at, both passed the cooldown check and both emailed the subscriber.
+    # Locking the rows for the duration of the decision makes the cooldown atomic.
     rows = db.execute(
-        select(AlertSubscription).where(AlertSubscription.confirmed_at.is_not(None))
+        select(AlertSubscription)
+        .where(AlertSubscription.confirmed_at.is_not(None))
+        .with_for_update()
     ).scalars()
 
     matched = []
@@ -151,6 +156,9 @@ def notify_neighbours(db: Session, report: Report) -> AlertOutcome:
         if result.delivered:
             subscription.last_notified_at = now
             outcome.sent += 1
+            # Commit per subscriber: the lock is released with the transaction, so the next
+            # worker sees the updated cooldown rather than the value it read earlier.
+            db.commit()
         else:
             logger.warning("alert not delivered: %s", result.detail)
 

@@ -145,6 +145,11 @@ class Report(Base):
     # Anonymous-by-design ownership: only the hash of a one-time token is stored, and
     # that token — not the sequential id — is what authorises access to this report.
     owner_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # A leaked access token used to grant permanent access to a report: the farmer's name,
+    # exact coordinates, photo and follow-up thread. It now expires.
+    owner_token_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Human-facing reference shown to the farmer. Public and sequential on purpose; it
     # identifies a report but grants nothing.
     reference: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, unique=True, index=True)

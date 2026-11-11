@@ -104,11 +104,27 @@ class WeatherSnapshot:
 # and retry the throttled ones with backoff.
 _CACHE_LOCK = threading.Lock()
 _CACHE: Dict[Tuple[float, float], Tuple[float, WeatherSnapshot]] = {}
+# Hard ceiling. The TTL alone is not enough: many distinct points inside one TTL window
+# still grow the dict without limit.
+_MAX_CACHE_ENTRIES = 500
 
 
 def _cache_key(latitude: float, longitude: float) -> Tuple[float, float]:
     """Round to ~1 km so a field and its neighbouring rows share one entry."""
     return (round(latitude, 2), round(longitude, 2))
+
+
+def _prune_cache_locked() -> None:
+    """Drop expired entries, then the oldest ones if still over the cap. Caller holds the lock."""
+    now = time.time()
+    ttl = max(60, int(settings.weather_cache_ttl))
+    for stale_key in [k for k, (stamp, _) in _CACHE.items() if now - stamp > ttl]:
+        _CACHE.pop(stale_key, None)
+    overflow = len(_CACHE) - _MAX_CACHE_ENTRIES
+    if overflow > 0:
+        oldest = sorted(_CACHE.items(), key=lambda item: item[1][0])[:overflow]
+        for stale_key, _ in oldest:
+            _CACHE.pop(stale_key, None)
 
 
 def clear_weather_cache() -> None:
@@ -381,7 +397,10 @@ def fetch_weather(
             continue
 
         with _CACHE_LOCK:
+            # Evict on write: entries were only TTL-checked on read, so a caller walking
+            # the latitude slowly grew this dict until the process was OOM-killed.
             _CACHE[key] = (time.time(), snapshot)
+            _prune_cache_locked()
         return snapshot
 
     raise WeatherError(

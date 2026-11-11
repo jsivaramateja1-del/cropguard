@@ -417,6 +417,16 @@ def _authorise_report(
     if user is not None and report.owner_user_id == user.id:
         return None
     if security.token_matches(report_token, report.owner_token_hash):
+        expires_at = report.owner_token_expires_at
+        if expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < datetime.now(timezone.utc):
+                # Reported exactly like a wrong token, so an expired link reveals nothing.
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Report not found.",
+                )
         return None
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -600,7 +610,8 @@ def health() -> dict:
                 "backend": model["backend"],
                 "classes": model["classes"],
                 "artifact_type": model["artifact_type"],
-                "error": model["error"],
+                # The raw message can name an artifact path; keep it in the logs.
+                "error": None if model["available"] else "model_unavailable",
             },
             "storage": {
                 "backend": storage_status.get("backend"),
@@ -676,7 +687,7 @@ def model_contract() -> schemas.ModelContractOut:
     if not service.available:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"The diagnosis model is not available: {describe['error']}",
+            detail="The diagnosis model is not available. Please try again later.",
         )
 
     classes = list(service.class_names)
@@ -1530,12 +1541,15 @@ def analyze(
         confidence_floor=settings.ood_confidence_floor,
     )
 
-    # One-time farmer access token: returned once, stored only as a hash.
+    # Farmer access token: returned once, stored only as a hash, and expiring after
+    # settings.report_token_ttl_days. (It is reusable until then — "one-time" was wrong.)
     access_token = security.new_report_token()
 
     report = Report(
         farmer_name=farmer_name.strip(),
         owner_token_hash=security.hash_token(access_token),
+        owner_token_expires_at=datetime.now(timezone.utc)
+        + timedelta(days=settings.report_token_ttl_days),
         owner_user_id=current_user.id if current_user else None,
         crop_type=crop,
         image_url=stored.url,

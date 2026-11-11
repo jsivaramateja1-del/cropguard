@@ -765,6 +765,36 @@ def test_health_reports_image_usage(client, leaf):
     assert usage["max_total_mb"] > 0
 
 
+def test_an_expired_report_token_is_refused(client, leaf):
+    """The token used to work forever.
+
+    A leaked link exposed the farmer's name, exact coordinates, photo and follow-up
+    thread permanently. It now carries an expiry, and an expired token is reported
+    exactly like a wrong one so it reveals nothing.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    import models
+    from database import SessionLocal
+
+    body = _create(client, leaf)
+    report_id = body["report"]["id"]
+    token = body.get("access_token") or body["report"].get("access_token")
+    assert token, "the API must return an access token once"
+
+    ok = client.get(f"/api/reports/{report_id}", headers={"X-Report-Token": token})
+    assert ok.status_code == 200
+
+    with SessionLocal() as session:
+        report = session.get(models.Report, report_id)
+        report.owner_token_expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+        session.commit()
+
+    expired = client.get(f"/api/reports/{report_id}", headers={"X-Report-Token": token})
+    assert expired.status_code == 404
+    assert expired.json()["detail"] == "Report not found."
+
+
 def test_favourable_conditions_are_phrases_not_characters(client):
     """The knowledge base stores this as one sentence.
 

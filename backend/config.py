@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     min_image_pixels: int = 96
     max_image_pixels: int = 6000
 
+    # --- farmer access tokens ---------------------------------------------------
+    # How long the token returned once at submission keeps working. Long enough for a
+    # season's follow-up, short enough that a leaked link stops being useful.
+    report_token_ttl_days: int = 180
+
     # --- outbreak alerts -------------------------------------------------------
     # Email warnings to farmers who subscribed to a radius around their fields.
     alerts_enabled: bool = True
