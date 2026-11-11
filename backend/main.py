@@ -111,6 +111,15 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+# /docs and /openapi.json hand an unauthenticated caller a complete map of the API,
+# including the admin-only routes and the auth scheme. They are useful while developing and
+# are a liability in production, so they follow the environment: on in development, off
+# when ENVIRONMENT=production (Render sets this).
+# "local" is the only value that means a developer machine; Render reports "render",
+# Vercel reports "vercel", and an explicit ENVIRONMENT of production/prod/staging also
+# counts as deployed. Anything that is not clearly local keeps the route map private.
+_EXPOSE_DOCS = settings.environment.strip().lower() in {"local", "development", "dev", "test"}
+
 app = FastAPI(
     title="CropGuard API",
     version=API_VERSION,
@@ -120,6 +129,9 @@ app = FastAPI(
         "replacement for an agricultural expert."
     ),
     lifespan=lifespan,
+    docs_url="/docs" if _EXPOSE_DOCS else None,
+    redoc_url="/redoc" if _EXPOSE_DOCS else None,
+    openapi_url="/openapi.json" if _EXPOSE_DOCS else None,
 )
 
 app.add_middleware(
@@ -721,6 +733,19 @@ def register(
     Elevation is not something a public endpoint can grant, so an expert account has to
     be created by an administrator.
     """
+    # Every call runs a cost-12 bcrypt hash (~0.2 s of CPU) and inserts a permanent row.
+    # Unthrottled, a single client can saturate a 1 vCPU instance and fill the table.
+    throttle = auth.login_throttle()
+    throttle_key = f"register:{security.client_key(request)}"
+    blocked, retry_after = throttle.blocked(throttle_key)
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many sign-up attempts. Wait a few minutes and try again.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    throttle.record_failure(throttle_key)
+
     email = auth.normalise_email(payload.email)
     problem = auth.password_problem(payload.password)
     if problem:
@@ -777,8 +802,11 @@ def login(
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     # Same message and roughly the same work either way, so the response does not reveal
     # whether the address exists.
+    # Block on the client address only. Keying the hard block on the email let anyone
+    # deny sign-in to a known user by failing eight times against their address.
     if user is None or not auth.verify_password(payload.password, user.password_hash):
         throttle.record_failure(key_email)
+        throttle.record_failure(f"login-client:{security.client_key(request)}")
         throttle.record_failure(key_client)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1428,10 +1456,12 @@ def reject_expert_request(
 def analyze(
     image: UploadFile = File(..., description="Leaf photo (JPEG, PNG or WebP)"),
     crop_type: str = Form(..., description="Tomato, Rice, Potato or Wheat"),
-    farmer_name: str = Form(..., description="Who submitted this report"),
+    farmer_name: str = Form(
+        ..., max_length=120, description="Who submitted this report"
+    ),
     latitude: float = Form(..., ge=-90, le=90),
     longitude: float = Form(..., ge=-180, le=180),
-    region_name: Optional[str] = Form(default=None),
+    region_name: Optional[str] = Form(default=None, max_length=160),
     request_expert_review: bool = Form(default=False),
     request: Request = None,
     current_user: Optional[User] = Depends(optional_user),
@@ -1603,6 +1633,7 @@ def analyze(
 
 @app.get("/api/weather", summary="Weather and disease risk for a location")
 def get_weather(
+    request: Request,
     latitude: float = Query(..., ge=-90, le=90),
     longitude: float = Query(..., ge=-180, le=180),
     disease: Optional[str] = Query(
@@ -1615,6 +1646,19 @@ def get_weather(
     Useful on its own (the outbreak map colours by risk) and as a diagnostic: if
     /api/analyze reports the risk unavailable, this endpoint says why.
     """
+    # Public and unauthenticated, but it performs outbound HTTP. Without a limiter one
+    # caller can walk the latitude by 0.01 and occupy the worker pool while burning the
+    # provider quota, because each new coordinate misses the ~1 km cache.
+    allowed, retry_after = security.analyze_limiter().allow(
+        f"weather:{security.client_key(request)}"
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many weather lookups. Wait a moment and try again.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     entry = advisory_module.get_advisory(disease) if disease else None
     if disease and entry is None:
         raise HTTPException(
@@ -2054,7 +2098,9 @@ def get_outbreaks(
             hotspots[hot_key] = {
                 "latitude": latitude,
                 "longitude": longitude,
-                "region_name": report.region_name,
+                # A farmer-typed village name next to ~1 km coordinates re-identifies a
+                # single report in a small village, so the public payload omits it.
+                "region_name": None,
                 "reports": 1,
             }
         else:

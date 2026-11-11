@@ -765,6 +765,36 @@ def test_health_reports_image_usage(client, leaf):
     assert usage["max_total_mb"] > 0
 
 
+def test_favourable_conditions_are_phrases_not_characters(client):
+    """The knowledge base stores this as one sentence.
+
+    It used to be passed straight into a list-typed field, so the API returned the first
+    characters — ["W", "a", "r"] — and every client rendered stray letters instead of the
+    actual conditions.
+    """
+    payload = client.get("/api/diseases").json()["diseases"]
+    assert payload
+
+    for card in payload:
+        conditions = card["favorable_conditions"]
+        assert isinstance(conditions, list)
+        for phrase in conditions:
+            assert isinstance(phrase, str)
+            assert len(phrase) > 10, f"{card['label']} returned a fragment: {phrase!r}"
+
+
+def test_outbreaks_rejects_an_unknown_risk_level(client):
+    """The column is a validated enum; an unknown value used to raise a 500."""
+    response = client.get("/api/outbreaks", params={"risk": "Extreme"})
+    assert response.status_code == 422
+    assert "Unknown risk level" in response.json()["detail"]
+
+
+def test_outbreaks_accepts_a_known_risk_level(client):
+    response = client.get("/api/outbreaks", params={"risk": "Low"})
+    assert response.status_code == 200
+
+
 def test_diseases_endpoint_is_public_and_marks_model_coverage(client):
     """The grid must not imply every advisory entry can be diagnosed from a photo."""
     response = client.get("/api/diseases")
