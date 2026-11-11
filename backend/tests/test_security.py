@@ -616,10 +616,21 @@ def test_reference_lookup_accepts_a_bare_number_and_any_case(client, leaf):
         assert response.status_code == 200, variant
 
 
-def test_reference_lookup_unknown_reference(client):
-    response = client.get("/api/reports/by-reference/CG-99999", headers=EXPERT)
-    assert response.status_code == 404
-    assert "No report with that reference" in response.json()["detail"]
+def test_reference_lookup_unknown_reference(client, leaf):
+    """An unknown reference must be indistinguishable from a known one without its code.
+
+    References are sequential (CG-00001, CG-00002...), so a distinct message confirmed
+    which ones exist to an unauthenticated caller.
+    """
+    unknown = client.get("/api/reports/by-reference/CG-99999", headers=EXPERT)
+    assert unknown.status_code == 404
+
+    created = _create(client, leaf)
+    reference = created["report"]["reference"]
+    no_code = client.get(f"/api/reports/by-reference/{reference}")
+    assert no_code.status_code == 404
+
+    assert unknown.json()["detail"] == no_code.json()["detail"] == "Report not found."
 
 
 # ---------------------------------------------------------------------------

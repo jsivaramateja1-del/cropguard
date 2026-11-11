@@ -801,7 +801,10 @@ def login(
     key_email = f"email:{email}"
     key_client = f"client:{security.client_key(request)}"
 
-    for key in (key_email, key_client):
+    # Client address only. Blocking on the email bucket let anyone deny sign-in to a
+    # known user by failing eight times against their address; the email counter is
+    # still recorded, purely for visibility in the logs.
+    for key in (key_client,):
         blocked, retry_after = throttle.blocked(key)
         if blocked:
             raise HTTPException(
@@ -817,7 +820,6 @@ def login(
     # deny sign-in to a known user by failing eight times against their address.
     if user is None or not auth.verify_password(payload.password, user.password_hash):
         throttle.record_failure(key_email)
-        throttle.record_failure(f"login-client:{security.client_key(request)}")
         throttle.record_failure(key_client)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1024,13 +1026,9 @@ def forgot_password(
         ),
     }
 
-    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if user is None or not user.is_active:
-        logger.info("password reset requested for an unknown or inactive address")
-        return generic
-
+    # Checked before the lookup: raising it afterwards told an anonymous caller that the
+    # address exists (known -> 503, unknown -> 202).
     if not emailer.email_configured():
-        # Honest failure: do not claim an email was sent when it cannot be.
         logger.error("password reset requested but email delivery is not configured")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1039,6 +1037,11 @@ def forgot_password(
                 "on the server. Ask an administrator to reset your password."
             ),
         )
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if user is None or not user.is_active:
+        logger.info("password reset requested for an unknown or inactive address")
+        return generic
 
     token = security.new_report_token()
     db.add(
@@ -1513,7 +1516,7 @@ def analyze(
     except ModelUnavailable as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"The diagnosis model is unavailable: {error}",
+            detail="The diagnosis model is unavailable. Please try again later.",
         ) from error
     except InvalidImage as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
@@ -1778,10 +1781,9 @@ def get_report_by_reference(
     if report is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                "No report with that reference. Check the number, and remember that "
-                "reading it also needs the access code shown when it was created."
-            ),
+            # Identical to every other not-found path: references are sequential, so a
+            # distinct message would confirm which ones exist.
+            detail="Report not found.",
         )
     _authorise_report(report, x_report_token, authorization, db)
     return schemas.ReportOut.model_validate(report)

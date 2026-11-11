@@ -182,17 +182,21 @@ def _apply_additive_migrations() -> None:
             except Exception as error:  # noqa: BLE001 - non-fatal, log and continue
                 logger.warning("migration step skipped (%s): %s", statement, error)
 
-    # ADD COLUMN IF NOT EXISTS is Postgres-only, and a silently skipped column would break
-    # every report read on SQLite. Check the catalogue and add it only when missing, which
-    # is valid on both engines.
-    try:
-        existing = {column["name"] for column in inspect(connection).get_columns("reports")}
-        if "owner_token_expires_at" not in existing:
-            connection.execute(
-                text("ALTER TABLE reports ADD COLUMN owner_token_expires_at TIMESTAMP")
-            )
-    except Exception as error:  # noqa: BLE001 - non-fatal
-        logger.warning("could not add reports.owner_token_expires_at: %s", error)
+        # ADD COLUMN IF NOT EXISTS is Postgres-only, and a silently skipped column would
+        # break every report read. Check the catalogue instead — valid on both engines.
+        # This must stay inside the transaction: the connection is closed after it, and
+        # running it outside raised ResourceClosedError, which the except swallowed, so
+        # the column was never added and the failure looked like success.
+        try:
+            existing = {column["name"] for column in inspect(connection).get_columns("reports")}
+            if "owner_token_expires_at" not in existing:
+                connection.execute(
+                    text("ALTER TABLE reports ADD COLUMN owner_token_expires_at TIMESTAMP")
+                )
+                logger.info("added reports.owner_token_expires_at")
+        except Exception as error:  # noqa: BLE001 - non-fatal
+            logger.warning("could not add reports.owner_token_expires_at: %s", error)
+
 
 
 # Set when the database could not be prepared at startup. The API keeps serving the

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 import email_templates
@@ -74,13 +74,10 @@ def subscribers_for(
     db: Session, *, latitude: float, longitude: float, crop: str
 ) -> List[tuple]:
     """Confirmed subscribers within their own radius who asked about this crop."""
-    # FOR UPDATE: two analyses of nearby reports handled in parallel threads both read the
-    # old last_notified_at, both passed the cooldown check and both emailed the subscriber.
-    # Locking the rows for the duration of the decision makes the cooldown atomic.
+    # No row lock here. Holding one across the send serialised every concurrent analysis
+    # for up to the mail timeout; the cooldown is claimed atomically per subscriber below.
     rows = db.execute(
-        select(AlertSubscription)
-        .where(AlertSubscription.confirmed_at.is_not(None))
-        .with_for_update()
+        select(AlertSubscription).where(AlertSubscription.confirmed_at.is_not(None))
     ).scalars()
 
     matched = []
@@ -128,13 +125,24 @@ def notify_neighbours(db: Session, report: Report) -> AlertOutcome:
             continue
         seen.add(subscription.email)
 
-        last = subscription.last_notified_at
-        if last is not None:
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=timezone.utc)
-            if now - last < cooldown:
-                outcome.skipped_cooldown += 1
-                continue
+        # Claim the cooldown with a conditional UPDATE: exactly one worker wins the row,
+        # the loser skips. This is atomic without holding a lock across the network call.
+        cutoff = now - cooldown
+        claimed = db.execute(
+            update(AlertSubscription)
+            .where(
+                AlertSubscription.id == subscription.id,
+                or_(
+                    AlertSubscription.last_notified_at.is_(None),
+                    AlertSubscription.last_notified_at < cutoff,
+                ),
+            )
+            .values(last_notified_at=now)
+        ).rowcount
+        db.commit()
+        if not claimed:
+            outcome.skipped_cooldown += 1
+            continue
 
         outcome.matched += 1
 
@@ -154,12 +162,16 @@ def notify_neighbours(db: Session, report: Report) -> AlertOutcome:
         # Called through the module so a test can substitute the transport.
         result = emailer.send_email(subscription.email, subject, html, text)
         if result.delivered:
-            subscription.last_notified_at = now
             outcome.sent += 1
-            # Commit per subscriber: the lock is released with the transaction, so the next
-            # worker sees the updated cooldown rather than the value it read earlier.
-            db.commit()
         else:
+            # Release the claim so a later report can try again rather than silencing this
+            # subscriber for the whole cooldown because of one transient failure.
+            db.execute(
+                update(AlertSubscription)
+                .where(AlertSubscription.id == subscription.id)
+                .values(last_notified_at=subscription.last_notified_at)
+            )
+            db.commit()
             logger.warning("alert not delivered: %s", result.detail)
 
     if outcome.sent:

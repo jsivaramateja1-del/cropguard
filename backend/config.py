@@ -121,6 +121,9 @@ class Settings(BaseSettings):
     # public) and it is what makes "is the deployed build current?" answerable.
     build_commit: str = ""
     build_environment: str = ""
+    # Explicit deployment label (production / staging / ...). Falls back to platform
+    # detection, so a host that sets neither still resolves sensibly.
+    environment_name: str = ""
 
     # --- account authentication ------------------------------------------------
     # Signing key for access tokens. If unset, a random key is generated per process,
@@ -172,6 +175,9 @@ class Settings(BaseSettings):
 
     @property
     def environment(self) -> str:
+        explicit = self.environment_name.strip() or os.environ.get("ENVIRONMENT", "").strip()
+        if explicit:
+            return explicit
         if self.build_environment.strip():
             return self.build_environment.strip()
         if os.environ.get("RENDER"):
