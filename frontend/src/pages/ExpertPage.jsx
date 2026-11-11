@@ -505,6 +505,7 @@ export default function ExpertPage() {
                 ) : null}
                 <input
                   className="mt-2 w-full rounded-md border border-input bg-card px-2 py-1.5 text-2xs"
+                  aria-label="Review note, optional, shown to the applicant"
                   placeholder="Review note (optional, shown to the applicant)"
                   value={decisionNotes}
                   onChange={(event) => setDecisionNotes(event.target.value)}
@@ -539,7 +540,9 @@ export default function ExpertPage() {
         </Card>
       ) : null}
 
-      {!loading && queue.length === 0 ? (
+      {/* Suppress the empty state while an error is showing: "nothing waiting" and
+          "could not load" are different facts, and showing both reads as an empty queue. */}
+      {!loading && !error && queue.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-1 py-10 text-center">
             <ClipboardList size={22} className="text-muted-foreground" aria-hidden="true" />

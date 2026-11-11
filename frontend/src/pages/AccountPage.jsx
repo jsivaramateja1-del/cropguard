@@ -77,8 +77,13 @@ export default function AccountPage() {
             .catch(() => {})
         }
       })
-      .catch(() => {
-        if (!cancelled) setUser(null)
+      .catch((loadError) => {
+        // A failed /me is not the same as "signed out". Saying so stops a network blip
+        // from looking like the account disappeared.
+        if (!cancelled) {
+          setUser(null)
+          setError(loadError)
+        }
       })
       .finally(() => {
         if (!cancelled) setChecking(false)

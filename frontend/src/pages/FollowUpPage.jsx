@@ -235,7 +235,7 @@ export default function FollowUpPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-2.5">
-              <ConfidenceMeter value={report.confidence} />
+              <ConfidenceMeter confidence={report.confidence} />
               {reviewed ? (
                 <p className="rounded-lg bg-muted px-2.5 py-2 text-2xs text-secondary-foreground">
                   An agricultural expert has reviewed this report. Their decision and notes

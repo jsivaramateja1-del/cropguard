@@ -203,6 +203,7 @@ export default function OutbreakMapPage() {
           <div className="flex gap-2">
             <Input
               className="h-10 text-sm"
+              aria-label="Filter by region"
               placeholder="Region, e.g. Vijayawada"
               value={region}
               onChange={(event) => setRegion(event.target.value)}
@@ -268,7 +269,7 @@ export default function OutbreakMapPage() {
                       </p>
                       <p>Weather risk: {point.weather_risk_level || 'not available'}</p>
                       <p>Latest status: {point.status.replace(/_/g, ' ')}</p>
-                      <p className="text-[10px] text-gray-500">
+                      <p className="text-[10px] text-muted-foreground">
                         Latest report: {new Date(point.latest_at).toLocaleDateString('en-IN')}
                       </p>
                     </div>
