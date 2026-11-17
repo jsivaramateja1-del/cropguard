@@ -34,7 +34,7 @@ function Layout({ children }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
           <Link to="/" className="flex shrink-0 items-center gap-2.5 rounded-md">
             <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-sm">
               <Leaf size={19} strokeWidth={2.25} aria-hidden="true" />
@@ -57,42 +57,42 @@ function Layout({ children }) {
           >
             <NavLink to="/" end>
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.diagnose')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/outbreaks">
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.outbreaks')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/follow-up">
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.followup')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/expert">
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.expert')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/diseases">
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.diseases')}
                 </Button>
               )}
             </NavLink>
             <NavLink to="/account">
               {({ isActive }) => (
-                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm">
+                <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="px-2">
                   {t('nav.account')}
                 </Button>
               )}
